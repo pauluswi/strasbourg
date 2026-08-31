@@ -1212,7 +1212,7 @@ Each category requires different handling.
 
 # 9. Architecture Decisions
 
-Major architectural decisions are documented separately as Architecture Decision Records.
+Major architectural decisions are documented separately as Architecture Decision Records under `docs/architecture/adr/`.
 
 Initial ADRs include:
 

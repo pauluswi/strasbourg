@@ -482,6 +482,12 @@ Strasbourg also documents architecture using:
 * **C4 Model**
 * **Architecture Decision Records (ADRs)**
 
+The ADRs live under:
+
+```text
+docs/architecture/adr/
+```
+
 ---
 
 # 🗺️ Roadmap
@@ -492,7 +498,7 @@ Strasbourg also documents architecture using:
 * [x] Create architecture documentation
 * [ ] Define C4 System Context
 * [ ] Define C4 Container Architecture
-* [ ] Create Architecture Decision Records
+* [x] Create Architecture Decision Records
 
 ## Phase 2 — Core Lending Domain
 
