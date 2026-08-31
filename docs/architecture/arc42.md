@@ -580,6 +580,14 @@ This integration is abstracted through a dedicated adapter.
 
 ---
 
+### SAP S/4
+
+Provides merchant master data used for merchant identity validation.
+
+The lending domain does not call SAP S/4 directly. It communicates through an **Anti-Corruption Layer** that translates between Strasbourg's merchant identity model and SAP's canonical structures.
+
+---
+
 # 3.4 Technical Context
 
 ```text
@@ -617,6 +625,8 @@ Strasbourg
     ├──── REST ──── Fraud Provider
     │
     ├──── REST ──── Identity Provider
+    │
+    ├──── REST ──── Merchant Identity ACL ─── SAP S/4
     │
     └──── REST ──── Loan Management System
 ```
@@ -668,6 +678,8 @@ Strasbourg
 ├── Offer Management
 │
 └── Integration
+    ├── Merchant Identity
+    └── Anti-Corruption Layer
 ```
 
 These boundaries reduce unnecessary coupling between business capabilities.
@@ -714,6 +726,8 @@ The domain layer must not depend directly on:
 * Kafka clients
 * Database implementations
 * External provider implementations
+
+External systems such as SAP S/4 are accessed only through adapters and anti-corruption layers that translate their models into the lending domain's language.
 
 ---
 
@@ -947,6 +961,7 @@ Application
 │                                                           │
 │  ┌─────────────────────────────────────────────────────┐ │
 │  │ Integration                                         │ │
+│  │  Merchant Identity ACL                              │ │
 │  └─────────────────────────────────────────────────────┘ │
 │                                                           │
 └───────────────────────────────────────────────────────────┘
@@ -1031,6 +1046,26 @@ Evaluate Rules
 │ MANUAL_REVIEW        │
 │                      │
 └──────────────────────┘
+```
+
+---
+
+## 6.4 Merchant Identity Validation
+
+```text
+Merchant Validation Required
+          │
+          ▼
+Merchant Identity Use Case
+          │
+          ▼
+Anti-Corruption Layer
+          │
+          ▼
+SAP S/4 Merchant Validation
+          │
+          ▼
+Validated / Rejected / Manual Review
 ```
 
 ---

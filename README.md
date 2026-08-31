@@ -243,6 +243,19 @@ The project follows **Hexagonal Architecture (Ports and Adapters)**.
                     └────────────────────┘
 ```
 
+## 4. External Systems Must Be Isolated
+
+External enterprise systems are integrated through **Anti-Corruption Layers (ACLs)**.
+
+For merchant identity validation, Strasbourg will use an ACL around **SAP S/4** so the lending domain keeps its own model and language instead of inheriting SAP terminology or data structures.
+
+The ACL is responsible for:
+
+* Translating Strasbourg merchant identity requests into SAP-compatible calls
+* Mapping SAP responses back into the platform's domain model
+* Shielding the core domain from SAP-specific schema and process changes
+* Keeping validation failures explicit so the merchant workflow can route to manual review when needed
+
 ---
 
 # ⚙️ Technology Stack
