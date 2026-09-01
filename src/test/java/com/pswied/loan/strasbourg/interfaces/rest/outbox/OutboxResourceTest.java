@@ -13,6 +13,7 @@ class OutboxResourceTest {
     @Test
     void publishesPendingEventsFromOutboxEndpoint() {
         given()
+                .header("Idempotency-Key", "idem-outbox-4001")
                 .contentType("application/json")
                 .body("""
                         {
