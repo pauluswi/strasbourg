@@ -1,7 +1,9 @@
 package com.pswied.loan.strasbourg.interfaces.rest.merchantidentity;
 
+import com.pswied.loan.strasbourg.application.audit.MerchantValidationAuditTrailStorePort;
 import com.pswied.loan.strasbourg.application.idempotency.IdempotencyConflictException;
 import com.pswied.loan.strasbourg.application.idempotency.MerchantValidationIdempotencyStorePort;
+import com.pswied.loan.strasbourg.domain.audit.MerchantValidationAuditTrailEntry;
 import com.pswied.loan.strasbourg.application.merchantidentity.MerchantIdentityValidationService;
 import com.pswied.loan.strasbourg.domain.idempotency.MerchantValidationIdempotencyEntry;
 import com.pswied.loan.strasbourg.domain.merchantidentity.MerchantIdentityValidationRequest;
@@ -17,8 +19,10 @@ import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
+import java.time.Instant;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.UUID;
 
 @Path("/merchant-identities")
 @Produces(MediaType.APPLICATION_JSON)
@@ -29,14 +33,17 @@ public class MerchantIdentityResource {
 
     private final MerchantIdentityValidationService validationService;
     private final MerchantValidationIdempotencyStorePort idempotencyStore;
+    private final MerchantValidationAuditTrailStorePort auditTrailStore;
 
     @Inject
     public MerchantIdentityResource(
             MerchantIdentityValidationService validationService,
-            MerchantValidationIdempotencyStorePort idempotencyStore
+            MerchantValidationIdempotencyStorePort idempotencyStore,
+            MerchantValidationAuditTrailStorePort auditTrailStore
     ) {
         this.validationService = validationService;
         this.idempotencyStore = idempotencyStore;
+        this.auditTrailStore = auditTrailStore;
     }
 
     @POST
@@ -54,6 +61,7 @@ public class MerchantIdentityResource {
             if (!entry.requestFingerprint().equals(requestFingerprint)) {
                 throw conflict();
             }
+            auditTrailStore.save(createAuditTrailEntry(normalizedKey, request, entry.result(), true));
             return entry.result();
         }
 
@@ -63,6 +71,7 @@ public class MerchantIdentityResource {
         } catch (IdempotencyConflictException exception) {
             throw conflict();
         }
+        auditTrailStore.save(createAuditTrailEntry(normalizedKey, request, result, false));
         return result;
     }
 
@@ -95,5 +104,53 @@ public class MerchantIdentityResource {
                         .entity("Idempotency key already used for a different request")
                         .build()
         );
+    }
+
+    private MerchantValidationAuditTrailEntry createAuditTrailEntry(
+            String idempotencyKey,
+            MerchantIdentityValidationRequest request,
+            MerchantIdentityValidationResult result,
+            boolean replayed
+    ) {
+        return new MerchantValidationAuditTrailEntry(
+                UUID.randomUUID().toString(),
+                idempotencyKey,
+                request.merchantId().trim(),
+                requestPayload(request),
+                mappedSapResponse(result),
+                result.status().name(),
+                result.reason(),
+                replayed,
+                Instant.now()
+        );
+    }
+
+    private String requestPayload(MerchantIdentityValidationRequest request) {
+        return """
+                {"merchantId":"%s","legalName":"%s","taxNumber":"%s"}
+                """.formatted(
+                escape(request.merchantId()),
+                escape(request.legalName()),
+                escape(request.taxNumber())
+        );
+    }
+
+    private String mappedSapResponse(MerchantIdentityValidationResult result) {
+        return """
+                {"status":"%s","sourceSystem":"%s","externalReference":"%s","reason":"%s","validatedAt":"%s"}
+                """.formatted(
+                result.status().name(),
+                escape(result.sourceSystem()),
+                escape(result.externalReference()),
+                escape(result.reason()),
+                result.validatedAt().toString()
+        );
+    }
+
+    private String escape(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 }
