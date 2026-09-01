@@ -12,6 +12,7 @@ public final class OutboxEvent {
     private final int retryCount;
     private final Instant createdAt;
     private final Instant publishedAt;
+    private final Instant lastRetriedAt;
     private final String lastError;
 
     private OutboxEvent(
@@ -23,6 +24,7 @@ public final class OutboxEvent {
             int retryCount,
             Instant createdAt,
             Instant publishedAt,
+            Instant lastRetriedAt,
             String lastError
     ) {
         this.eventId = eventId;
@@ -33,6 +35,7 @@ public final class OutboxEvent {
         this.retryCount = retryCount;
         this.createdAt = createdAt;
         this.publishedAt = publishedAt;
+        this.lastRetriedAt = lastRetriedAt;
         this.lastError = lastError;
     }
 
@@ -52,7 +55,34 @@ public final class OutboxEvent {
                 0,
                 createdAt,
                 null,
+                null,
                 null
+        );
+    }
+
+    public static OutboxEvent rehydrate(
+            String eventId,
+            String eventType,
+            String aggregateId,
+            String payload,
+            OutboxEventStatus status,
+            int retryCount,
+            Instant createdAt,
+            Instant publishedAt,
+            Instant lastRetriedAt,
+            String lastError
+    ) {
+        return new OutboxEvent(
+                eventId,
+                eventType,
+                aggregateId,
+                payload,
+                status,
+                retryCount,
+                createdAt,
+                publishedAt,
+                lastRetriedAt,
+                lastError
         );
     }
 
@@ -66,11 +96,12 @@ public final class OutboxEvent {
                 retryCount,
                 createdAt,
                 publishedAt,
+                lastRetriedAt,
                 null
         );
     }
 
-    public OutboxEvent markRetry(String errorMessage) {
+    public OutboxEvent markRetry(String errorMessage, Instant retriedAt) {
         return new OutboxEvent(
                 eventId,
                 eventType,
@@ -80,6 +111,7 @@ public final class OutboxEvent {
                 retryCount + 1,
                 createdAt,
                 null,
+                retriedAt,
                 errorMessage
         );
     }
@@ -114,6 +146,10 @@ public final class OutboxEvent {
 
     public Instant publishedAt() {
         return publishedAt;
+    }
+
+    public Instant lastRetriedAt() {
+        return lastRetriedAt;
     }
 
     public String lastError() {

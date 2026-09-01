@@ -28,7 +28,7 @@ public class OutboxPublisherService {
                 outboxEventStorePort.updateEvent(event.markPublished(Instant.now()));
                 publishedCount++;
             } catch (RuntimeException exception) {
-                outboxEventStorePort.updateEvent(event.markRetry(exception.getMessage()));
+                outboxEventStorePort.updateEvent(event.markRetry(exception.getMessage(), Instant.now()));
             }
         }
         return publishedCount;
