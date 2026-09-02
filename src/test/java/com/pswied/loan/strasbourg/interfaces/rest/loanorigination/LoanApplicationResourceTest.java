@@ -34,6 +34,12 @@ class LoanApplicationResourceTest {
                 .body("amount", equalTo(15000.0F))
                 .body("tenorMonths", equalTo(24))
                 .body("status", equalTo("SUBMITTED"))
+                .body("applicantVerificationStatus", equalTo("PASSED"))
+                .body("applicantVerificationReason", equalTo("Applicant passed mock verification"))
+                .body("merchantVerificationStatus", equalTo("VERIFIED"))
+                .body("merchantVerificationSourceSystem", equalTo("SAP_S4"))
+                .body("merchantVerificationReference", notNullValue())
+                .body("verifiedAt", notNullValue())
                 .body("submittedAt", notNullValue());
     }
 }
