@@ -116,6 +116,21 @@ public final class OutboxEvent {
         );
     }
 
+    public OutboxEvent markDeadLetter(String errorMessage, Instant deadLetteredAt) {
+        return new OutboxEvent(
+                eventId,
+                eventType,
+                aggregateId,
+                payload,
+                OutboxEventStatus.DEAD_LETTER,
+                retryCount,
+                createdAt,
+                null,
+                deadLetteredAt,
+                errorMessage
+        );
+    }
+
     public String eventId() {
         return eventId;
     }

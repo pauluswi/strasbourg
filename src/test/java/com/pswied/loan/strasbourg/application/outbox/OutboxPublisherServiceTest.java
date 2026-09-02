@@ -16,7 +16,7 @@ class OutboxPublisherServiceTest {
     void publishesPendingEventAndMarksItPublished() {
         InMemoryOutboxEventStore store = new InMemoryOutboxEventStore();
         MockKafkaOutboxEventPublisher publisher = new MockKafkaOutboxEventPublisher();
-        OutboxPublisherService service = new OutboxPublisherService(store, publisher);
+        OutboxPublisherService service = new OutboxPublisherService(store, publisher, 5, 30);
 
         store.saveEvent(OutboxEvent.pending(
                 "evt-1001",
@@ -38,7 +38,7 @@ class OutboxPublisherServiceTest {
     void retriesEventOnMockKafkaFailure() {
         InMemoryOutboxEventStore store = new InMemoryOutboxEventStore();
         MockKafkaOutboxEventPublisher publisher = new MockKafkaOutboxEventPublisher();
-        OutboxPublisherService service = new OutboxPublisherService(store, publisher);
+        OutboxPublisherService service = new OutboxPublisherService(store, publisher, 5, 30);
 
         store.saveEvent(OutboxEvent.pending(
                 "evt-1002",
@@ -56,5 +56,30 @@ class OutboxPublisherServiceTest {
         assertThat(event.status()).isEqualTo(OutboxEventStatus.PENDING);
         assertThat(event.retryCount()).isEqualTo(1);
         assertThat(event.lastError()).contains("Mock Kafka publish failure");
+    }
+
+    @Test
+    void movesEventToDeadLetterAfterRetryLimit() {
+        InMemoryOutboxEventStore store = new InMemoryOutboxEventStore();
+        MockKafkaOutboxEventPublisher publisher = new MockKafkaOutboxEventPublisher();
+        OutboxPublisherService service = new OutboxPublisherService(store, publisher, 2, 0);
+
+        var event = OutboxEvent.pending(
+                "evt-1003",
+                "MerchantIdentityValidated",
+                "fail-publish-merchant",
+                "{\"status\":\"VERIFIED\"}",
+                Instant.parse("2026-08-31T06:10:00Z")
+        );
+        store.saveEvent(event.markRetry("Mock Kafka publish failure", Instant.parse("2026-08-31T06:11:00Z")));
+
+        int published = service.publishPendingEvents();
+
+        assertThat(published).isZero();
+        assertThat(store.findPendingEvents()).isEmpty();
+        var storedEvent = store.findByEventId("evt-1003").orElseThrow();
+        assertThat(storedEvent.status()).isEqualTo(OutboxEventStatus.DEAD_LETTER);
+        assertThat(storedEvent.retryCount()).isEqualTo(2);
+        assertThat(storedEvent.lastError()).contains("Mock Kafka publish failure");
     }
 }
