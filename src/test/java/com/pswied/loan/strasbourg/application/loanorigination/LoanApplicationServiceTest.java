@@ -8,6 +8,7 @@ import com.pswied.loan.strasbourg.domain.audit.LoanApplicationAuditTrailEntry;
 import com.pswied.loan.strasbourg.domain.loanorigination.ApplicantVerificationResult;
 import com.pswied.loan.strasbourg.domain.loanorigination.ApplicantVerificationStatus;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplication;
+import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplicationJourneyResult;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplicationLifecycleStage;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplicationStatus;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanOriginationDecision;
@@ -116,6 +117,32 @@ class LoanApplicationServiceTest {
 
         assertThat(result.decision()).isEqualTo(LoanOriginationDecision.MANUAL_REVIEW);
         assertThat(result.decisionReasonCode()).isEqualTo(LoanOriginationDecisionReasonCode.MERCHANT_MANUAL_REVIEW_REQUIRED);
+    }
+
+    @Test
+    void readsLoanApplicationJourneyFromPersistedLifecycle() {
+        InMemoryLoanApplicationStore loanApplicationStore = new InMemoryLoanApplicationStore();
+        InMemoryLoanApplicationAuditTrailStore auditTrailStore = new InMemoryLoanApplicationAuditTrailStore();
+        InMemoryOutboxEventStore outboxEventStore = new InMemoryOutboxEventStore();
+        ApplicantVerificationPort applicantVerificationPort = (applicantName, amount, tenorMonths) ->
+                new ApplicantVerificationResult(ApplicantVerificationStatus.PASSED, "Applicant passed mock verification");
+        MerchantIdentityValidationService merchantService = merchantService(verificationPortWithStatus(MerchantIdentityStatus.VERIFIED), outboxEventStore);
+        LoanApplicationService service = new LoanApplicationService(
+                applicantVerificationPort,
+                merchantService,
+                loanApplicationStore,
+                auditTrailStore,
+                outboxEventStore
+        );
+
+        var submitted = service.submit(sampleRequest());
+        LoanApplicationJourneyResult journey = service.getById(submitted.loanApplicationId()).orElseThrow();
+
+        assertThat(journey.loanApplicationId()).isEqualTo(submitted.loanApplicationId());
+        assertThat(journey.merchantVerificationStatus()).isEqualTo(MerchantIdentityStatus.VERIFIED);
+        assertThat(journey.journey())
+                .extracting(stage -> stage.eventType())
+                .containsExactly("LoanApplicationSubmitted", "LoanApplicationVerified", "LoanApplicationDecided");
     }
 
     private MerchantIdentityValidationPort verificationPortWithStatus(MerchantIdentityStatus status) {

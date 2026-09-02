@@ -1,12 +1,16 @@
 package com.pswied.loan.strasbourg.interfaces.rest.loanorigination;
 
 import com.pswied.loan.strasbourg.application.loanorigination.LoanApplicationService;
+import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplicationJourneyResult;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplicationSubmissionRequest;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplicationSubmissionResult;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.POST;
+import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
@@ -26,5 +30,12 @@ public class LoanApplicationResource {
     @POST
     public LoanApplicationSubmissionResult submit(@Valid LoanApplicationSubmissionRequest request) {
         return loanApplicationService.submit(request);
+    }
+
+    @GET
+    @Path("/{loanApplicationId}")
+    public LoanApplicationJourneyResult getById(@PathParam("loanApplicationId") String loanApplicationId) {
+        return loanApplicationService.getById(loanApplicationId)
+                .orElseThrow(() -> new NotFoundException("Loan application not found: " + loanApplicationId));
     }
 }

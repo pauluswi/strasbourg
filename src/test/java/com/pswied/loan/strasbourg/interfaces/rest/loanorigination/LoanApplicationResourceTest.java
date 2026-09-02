@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -79,5 +80,51 @@ class LoanApplicationResourceTest {
                 .map(OutboxEvent::eventType)
                 .toList())
                 .containsExactly("LoanApplicationSubmitted", "LoanApplicationVerified", "LoanApplicationDecided");
+    }
+
+    @Test
+    void getsLoanApplicationJourneyById() {
+        String loanApplicationId = given()
+                .contentType("application/json")
+                .body("""
+                        {
+                          "applicantName": "Bob Owner",
+                          "merchantId": "m-5002",
+                          "merchantLegalName": "Beta Merchant",
+                          "merchantTaxNumber": "TAX-5002",
+                          "amount": 21000.00,
+                          "tenorMonths": 36
+                        }
+                        """)
+                .when()
+                .post("/api/loan-applications")
+                .then()
+                .statusCode(200)
+                .extract()
+                .jsonPath()
+                .getString("loanApplicationId");
+
+        given()
+                .when()
+                .get("/api/loan-applications/{id}", loanApplicationId)
+                .then()
+                .statusCode(200)
+                .body("loanApplicationId", equalTo(loanApplicationId))
+                .body("merchantVerificationStatus", equalTo("VERIFIED"))
+                .body("merchantVerificationSourceSystem", equalTo("SAP_S4"))
+                .body("merchantVerificationReference", notNullValue())
+                .body("journey", hasSize(3))
+                .body("journey[0].eventType", equalTo("LoanApplicationSubmitted"))
+                .body("journey[1].eventType", equalTo("LoanApplicationVerified"))
+                .body("journey[2].eventType", equalTo("LoanApplicationDecided"));
+    }
+
+    @Test
+    void returnsNotFoundForUnknownLoanApplication() {
+        given()
+                .when()
+                .get("/api/loan-applications/{id}", "loan-missing-9999")
+                .then()
+                .statusCode(404);
     }
 }

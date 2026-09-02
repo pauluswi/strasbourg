@@ -5,6 +5,8 @@ import com.pswied.loan.strasbourg.application.merchantidentity.MerchantIdentityV
 import com.pswied.loan.strasbourg.application.outbox.OutboxEventStorePort;
 import com.pswied.loan.strasbourg.domain.audit.LoanApplicationAuditTrailEntry;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplication;
+import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplicationJourneyResult;
+import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplicationJourneyStage;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplicationLifecycleStage;
 import com.pswied.loan.strasbourg.domain.loanorigination.ApplicantVerificationStatus;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplicationStatus;
@@ -19,6 +21,8 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @ApplicationScoped
@@ -105,6 +109,44 @@ public class LoanApplicationService {
                 loanApplication.verifiedAt(),
                 loanApplication.submittedAt()
         );
+    }
+
+    public Optional<LoanApplicationJourneyResult> getById(String loanApplicationId) {
+        return loanApplicationStorePort.findByLoanApplicationId(loanApplicationId)
+                .map(loanApplication -> {
+                    List<LoanApplicationJourneyStage> journey = loanApplicationAuditTrailStorePort
+                            .findByLoanApplicationId(loanApplicationId)
+                            .stream()
+                            .map(entry -> new LoanApplicationJourneyStage(
+                                    entry.lifecycleStage(),
+                                    entry.eventType(),
+                                    entry.payload(),
+                                    entry.createdAt()
+                            ))
+                            .toList();
+
+                    return new LoanApplicationJourneyResult(
+                            loanApplication.loanApplicationId(),
+                            loanApplication.applicantName(),
+                            loanApplication.merchantId(),
+                            loanApplication.amount(),
+                            loanApplication.tenorMonths(),
+                            loanApplication.status(),
+                            loanApplication.lifecycleStage(),
+                            loanApplication.decision(),
+                            loanApplication.decisionReasonCode(),
+                            loanApplication.applicantVerificationStatus(),
+                            loanApplication.applicantVerificationReason(),
+                            loanApplication.merchantVerificationStatus(),
+                            loanApplication.merchantVerificationReason(),
+                            loanApplication.merchantVerificationSourceSystem(),
+                            loanApplication.merchantVerificationReference(),
+                            loanApplication.submittedAt(),
+                            loanApplication.verifiedAt(),
+                            loanApplication.decidedAt(),
+                            journey
+                    );
+                });
     }
 
     private void saveLifecycleAuditAndOutbox(LoanApplication loanApplication) {
