@@ -1,8 +1,8 @@
 # Strasbourg
 
-> **Cloud-Native Lending Origination & Decisioning Platform**
+> **Lending Origination Showcase (Java 25 + Quarkus)**
 >
-> A production-inspired Financial Services platform built with **Java 25** and **Quarkus**, demonstrating modern lending architecture, automated decisioning, event-driven workflows, reliability patterns, and cloud-native deployment.
+> A running showcase of loan origination where a merchant owner applies for a loan, the system verifies merchant identity via a SAP S/4 ACL (mocked), returns a decision, and persists lifecycle + outbox + audit trails.
 
 [![Java](https://img.shields.io/badge/Java-25-orange)]()
 [![Quarkus](https://img.shields.io/badge/Quarkus-3.x-blue)]()
@@ -16,17 +16,14 @@
 
 **Strasbourg** is a cloud-native **Lending Origination and Decisioning Platform** designed to manage the lifecycle of a loan application.
 
-The platform processes a loan application from submission through:
+Current implemented flow:
 
-* Eligibility assessment
-* Credit assessment
-* Fraud assessment
-* Affordability analysis
-* Automated decisioning
-* Manual review
-* Loan offer generation
-* Customer acceptance
-* Downstream loan management handover
+* Merchant owner submits a loan application
+* Applicant (owner) verification is run via mock adapter
+* Merchant identity is verified through SAP S/4 ACL (mocked adapter)
+* Origination decision is returned (`APPROVED`, `REJECTED`, `MANUAL_REVIEW`)
+* Lifecycle is persisted (`SUBMITTED`, `VERIFIED`, `DECIDED`)
+* Outbox + audit entries are written for traceability
 
 Strasbourg is designed as a **production-inspired architecture showcase** for modern banking and Financial Services Industry (FSI) applications.
 
@@ -101,46 +98,29 @@ Including:
 # 🔄 Lending Origination Flow
 
 ```text
-                         Loan Applicant
-                                │
-                                ▼
-                      Submit Loan Application
-                                │
-                                ▼
-                         Validation
-                                │
-                                ▼
-                     Eligibility Assessment
-                                │
-                                ▼
-                    Automated Assessments
-                                │
-           ┌────────────────────┼────────────────────┐
-           │                    │                    │
-           ▼                    ▼                    ▼
-
-     Credit Assessment    Fraud Assessment    Affordability
-
-           │                    │                    │
-           └────────────────────┼────────────────────┘
-                                │
-                                ▼
-                         Decision Engine
-                                │
-              ┌─────────────────┼──────────────────┐
-              │                 │                  │
-              ▼                 ▼                  ▼
-
-          APPROVED          DECLINED        MANUAL_REVIEW
-              │
-              ▼
-          Loan Offer
-              │
-              ▼
-          Customer Acceptance
-              │
-              ▼
-          Loan Management Handover
+                   Merchant Owner (Applicant)
+                               │
+                               ▼
+                 POST /api/loan-applications
+                               │
+                               ▼
+                 Mock Applicant Verification
+                               │
+                               ▼
+                 Merchant Identity Validation
+                               │
+                               ▼
+                    SAP S/4 ACL (Mock Adapter)
+                               │
+                               ▼
+                       Origination Decision
+                  (APPROVED / REJECTED / MANUAL_REVIEW)
+                               │
+                               ▼
+         Persist Loan Lifecycle + Audit + Outbox Events
+                               │
+                               ▼
+              GET /api/loan-applications/{id} Journey
 ```
 
 ---
@@ -247,7 +227,7 @@ The project follows **Hexagonal Architecture (Ports and Adapters)**.
 
 External enterprise systems are integrated through **Anti-Corruption Layers (ACLs)**.
 
-For merchant identity validation, Strasbourg will use an ACL around **SAP S/4** so the lending domain keeps its own model and language instead of inheriting SAP terminology or data structures.
+For merchant identity validation, Strasbourg uses an ACL around **SAP S/4** so the lending domain keeps its own model and language instead of inheriting SAP terminology or data structures.
 
 The ACL is responsible for:
 
@@ -258,6 +238,19 @@ The ACL is responsible for:
 
 ---
 
+# ✅ Implemented Showcase APIs
+
+* `POST /api/merchant-identities/validate`  
+  Merchant verification with `Idempotency-Key`, audit persistence, and outbox event.
+* `POST /api/loan-applications`  
+  Submit loan application, run applicant + merchant verification, return decision, persist lifecycle/audit/outbox.
+* `GET /api/loan-applications/{loanApplicationId}`  
+  Read full journey including SAP verification result and lifecycle timeline.
+* `POST /api/outbox/publish`  
+  Manual trigger for outbox publishing (with scheduler also enabled).
+
+---
+
 # ⚙️ Technology Stack
 
 | Area           | Technology                   |
@@ -265,13 +258,13 @@ The ACL is responsible for:
 | Language       | **Java 25**                  |
 | Framework      | **Quarkus**                  |
 | Build Tool     | Maven                        |
-| Database       | PostgreSQL                   |
-| Cache          | Redis                        |
-| Messaging      | Apache Kafka                 |
-| Authentication | Keycloak / OpenID Connect    |
+| Database       | H2 (local default), PostgreSQL (prod profile) |
+| Cache          | Redis dependency (not active in current flow) |
+| Messaging      | Mock Kafka publisher + outbox model |
+| Authentication | OIDC profile prepared (disabled by default local/test) |
 | Architecture   | DDD + Hexagonal Architecture |
-| Deployment     | Docker + Kubernetes          |
-| Cloud Target   | AWS                          |
+| Testing        | Quarkus Test, AssertJ, ArchUnit |
+| Deployment     | Local-first showcase runtime |
 
 ---
 
@@ -303,9 +296,8 @@ Possible outcomes:
 
 ```text
 APPROVED
-DECLINED
+REJECTED
 MANUAL_REVIEW
-PENDING
 ```
 
 ---
@@ -340,15 +332,15 @@ This prevents situations where the database is updated but the corresponding bus
 
 # 🛡️ Idempotency
 
-Strasbourg prevents duplicate loan applications.
+Strasbourg currently enforces idempotency on merchant identity verification.
 
 ```http
-POST /loan-applications
+POST /merchant-identities/validate
 
 Idempotency-Key: abc-123
 ```
 
-Repeated requests using the same idempotency key must not create multiple loan applications.
+Repeated requests with the same key and same payload replay the same result; the same key with a different payload returns `409 Conflict`.
 
 ---
 
@@ -358,25 +350,25 @@ Repeated requests using the same idempotency key must not create multiple loan a
 strasbourg/
 │
 ├── README.md
-├── ARC42.md
+├── pom.xml
 │
 ├── docs/
-│   ├── adr/
-│   ├── c4/
-│   └── diagrams/
+│   └── architecture/
+│       ├── arc42.md
+│       └── adr/
 │
 ├── src/
 │   ├── main/
-│   │   └── java/
-│   │       └── com/
-│   │           └── strasbourg/
-│   │
+│   │   ├── java/com/pswied/loan/strasbourg/
+│   │   │   ├── domain/
+│   │   │   ├── application/
+│   │   │   ├── infrastructure/
+│   │   │   └── interfaces/
+│   │   └── resources/application.properties
 │   └── test/
+│       └── java/com/pswied/loan/strasbourg/
 │
-├── docker/
-├── kubernetes/
-│
-└── docker-compose.yml
+└── mvnw
 ```
 
 ---
@@ -389,17 +381,7 @@ strasbourg/
 
 ```text
 Java 25
-Maven
-Docker
-Docker Compose
 ```
-
-The development environment will include:
-
-* PostgreSQL
-* Apache Kafka
-* Redis
-* Keycloak
 
 ## Clone the Repository
 
@@ -409,16 +391,28 @@ git clone https://github.com/pauluswi/strasbourg.git
 cd strasbourg
 ```
 
-## Run Infrastructure
-
-```bash
-docker compose up -d
-```
-
 ## Run the Application
 
 ```bash
 ./mvnw quarkus:dev
+```
+
+## Quick API Walkthrough
+
+```bash
+# 1) Merchant identity validation (idempotent)
+curl -X POST http://localhost:8080/api/merchant-identities/validate \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: demo-merchant-1' \
+  -d '{"merchantId":"m-1001","legalName":"Acme","taxNumber":"TAX-1001"}'
+
+# 2) Submit loan application
+curl -X POST http://localhost:8080/api/loan-applications \
+  -H 'Content-Type: application/json' \
+  -d '{"applicantName":"Alice Owner","merchantId":"m-1001","merchantLegalName":"Acme","merchantTaxNumber":"TAX-1001","amount":15000.00,"tenorMonths":24}'
+
+# 3) Read the journey
+curl http://localhost:8080/api/loan-applications/{loanApplicationId}
 ```
 
 ---
@@ -473,7 +467,7 @@ Technologies:
 The complete architecture documentation is available in:
 
 ```text
-ARC42.md
+docs/architecture/arc42.md
 ```
 
 Strasbourg also documents architecture using:
@@ -502,11 +496,11 @@ docs/architecture/adr/
 
 ## Phase 2 — Core Lending Domain
 
-* [ ] Loan Application
-* [ ] Application validation
+* [x] Loan Application (submit + read journey)
+* [x] Application validation (merchant owner + merchant data)
 * [ ] Eligibility assessment
-* [ ] Domain model
-* [ ] State transitions
+* [x] Domain model
+* [x] State transitions (`SUBMITTED` -> `VERIFIED` -> `DECIDED`)
 
 ## Phase 3 — Automated Assessments
 
@@ -517,15 +511,15 @@ docs/architecture/adr/
 
 ## Phase 4 — Decisioning
 
-* [ ] Rules-based decision engine
-* [ ] Explainable decisions
+* [x] Initial decision engine (`APPROVED` / `REJECTED` / `MANUAL_REVIEW`)
+* [x] Explainable decisions (decision reason code + reasons in response)
 * [ ] Manual review workflow
 
 ## Phase 5 — Event-Driven Architecture
 
-* [ ] Apache Kafka integration
-* [ ] Domain events
-* [ ] Transactional Outbox
+* [ ] Apache Kafka real broker integration
+* [x] Domain events (loan lifecycle + merchant validation)
+* [x] Transactional Outbox (persisted, scheduler + retries/dead-letter)
 * [ ] Idempotent consumers
 
 ## Phase 6 — Production Readiness
@@ -533,8 +527,8 @@ docs/architecture/adr/
 * [ ] Authentication and authorization
 * [ ] Observability
 * [ ] Resilience patterns
-* [ ] Integration tests
-* [ ] Architecture tests
+* [x] Integration tests (Quarkus + persistence + API showcase)
+* [x] Architecture tests (ArchUnit)
 
 ## Phase 7 — Cloud Deployment
 
@@ -553,9 +547,9 @@ docs/architecture/adr/
 * Java 25
 * Quarkus
 * REST APIs
-* Kafka
-* PostgreSQL
-* Redis
+* Outbox + mock Kafka publisher
+* H2 (local) and PostgreSQL profile
+* Redis-ready dependencies
 
 ### Software Architecture
 
