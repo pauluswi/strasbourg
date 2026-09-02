@@ -1,6 +1,11 @@
 package com.pswied.loan.strasbourg.application.loanorigination;
 
+import com.pswied.loan.strasbourg.application.audit.LoanApplicationAuditTrailStorePort;
 import com.pswied.loan.strasbourg.application.merchantidentity.MerchantIdentityValidationService;
+import com.pswied.loan.strasbourg.application.outbox.OutboxEventStorePort;
+import com.pswied.loan.strasbourg.domain.audit.LoanApplicationAuditTrailEntry;
+import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplication;
+import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplicationLifecycleStage;
 import com.pswied.loan.strasbourg.domain.loanorigination.ApplicantVerificationStatus;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplicationStatus;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanOriginationDecision;
@@ -9,6 +14,7 @@ import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplicationSubmissi
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplicationSubmissionResult;
 import com.pswied.loan.strasbourg.domain.merchantidentity.MerchantIdentityStatus;
 import com.pswied.loan.strasbourg.domain.merchantidentity.MerchantIdentityValidationRequest;
+import com.pswied.loan.strasbourg.domain.outbox.OutboxEvent;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -20,18 +26,28 @@ public class LoanApplicationService {
 
     private final ApplicantVerificationPort applicantVerificationPort;
     private final MerchantIdentityValidationService merchantIdentityValidationService;
+    private final LoanApplicationStorePort loanApplicationStorePort;
+    private final LoanApplicationAuditTrailStorePort loanApplicationAuditTrailStorePort;
+    private final OutboxEventStorePort outboxEventStorePort;
 
     @Inject
     public LoanApplicationService(
             ApplicantVerificationPort applicantVerificationPort,
-            MerchantIdentityValidationService merchantIdentityValidationService
+            MerchantIdentityValidationService merchantIdentityValidationService,
+            LoanApplicationStorePort loanApplicationStorePort,
+            LoanApplicationAuditTrailStorePort loanApplicationAuditTrailStorePort,
+            OutboxEventStorePort outboxEventStorePort
     ) {
         this.applicantVerificationPort = applicantVerificationPort;
         this.merchantIdentityValidationService = merchantIdentityValidationService;
+        this.loanApplicationStorePort = loanApplicationStorePort;
+        this.loanApplicationAuditTrailStorePort = loanApplicationAuditTrailStorePort;
+        this.outboxEventStorePort = outboxEventStorePort;
     }
 
     public LoanApplicationSubmissionResult submit(LoanApplicationSubmissionRequest request) {
-        Instant now = Instant.now();
+        String loanApplicationId = UUID.randomUUID().toString();
+        Instant submittedAt = Instant.now();
         var applicantVerification = applicantVerificationPort.verify(
                 request.applicantName().trim(),
                 request.amount(),
@@ -44,15 +60,18 @@ public class LoanApplicationService {
                         request.merchantTaxNumber().trim()
                 )
         );
+        Instant verifiedAt = merchantVerification.validatedAt();
         var decision = decide(applicantVerification.status(), merchantVerification.status());
+        Instant decidedAt = Instant.now();
 
-        return new LoanApplicationSubmissionResult(
-                UUID.randomUUID().toString(),
+        LoanApplication loanApplication = new LoanApplication(
+                loanApplicationId,
                 request.applicantName().trim(),
                 request.merchantId().trim(),
                 request.amount(),
                 request.tenorMonths(),
-                LoanApplicationStatus.SUBMITTED,
+                LoanApplicationStatus.DECIDED,
+                LoanApplicationLifecycleStage.DECIDED,
                 decision.decision(),
                 decision.reasonCode(),
                 applicantVerification.status(),
@@ -61,8 +80,79 @@ public class LoanApplicationService {
                 merchantVerification.reason(),
                 merchantVerification.sourceSystem(),
                 merchantVerification.externalReference(),
-                merchantVerification.validatedAt(),
-                now
+                submittedAt,
+                verifiedAt,
+                decidedAt
+        );
+        loanApplicationStorePort.save(loanApplication);
+        saveLifecycleAuditAndOutbox(loanApplication);
+
+        return new LoanApplicationSubmissionResult(
+                loanApplication.loanApplicationId(),
+                loanApplication.applicantName(),
+                loanApplication.merchantId(),
+                loanApplication.amount(),
+                loanApplication.tenorMonths(),
+                loanApplication.status(),
+                loanApplication.decision(),
+                loanApplication.decisionReasonCode(),
+                loanApplication.applicantVerificationStatus(),
+                loanApplication.applicantVerificationReason(),
+                loanApplication.merchantVerificationStatus(),
+                loanApplication.merchantVerificationReason(),
+                loanApplication.merchantVerificationSourceSystem(),
+                loanApplication.merchantVerificationReference(),
+                loanApplication.verifiedAt(),
+                loanApplication.submittedAt()
+        );
+    }
+
+    private void saveLifecycleAuditAndOutbox(LoanApplication loanApplication) {
+        saveStage(loanApplication, LoanApplicationLifecycleStage.SUBMITTED, "LoanApplicationSubmitted", loanApplication.submittedAt());
+        saveStage(loanApplication, LoanApplicationLifecycleStage.VERIFIED, "LoanApplicationVerified", loanApplication.verifiedAt());
+        saveStage(loanApplication, LoanApplicationLifecycleStage.DECIDED, "LoanApplicationDecided", loanApplication.decidedAt());
+    }
+
+    private void saveStage(
+            LoanApplication loanApplication,
+            LoanApplicationLifecycleStage stage,
+            String eventType,
+            Instant stageAt
+    ) {
+        loanApplicationAuditTrailStorePort.save(new LoanApplicationAuditTrailEntry(
+                UUID.randomUUID().toString(),
+                loanApplication.loanApplicationId(),
+                stage.name(),
+                eventType,
+                lifecyclePayload(loanApplication, stage, stageAt),
+                stageAt
+        ));
+        outboxEventStorePort.saveEvent(OutboxEvent.pending(
+                UUID.randomUUID().toString(),
+                eventType,
+                loanApplication.loanApplicationId(),
+                lifecyclePayload(loanApplication, stage, stageAt),
+                stageAt
+        ));
+    }
+
+    private String lifecyclePayload(
+            LoanApplication loanApplication,
+            LoanApplicationLifecycleStage stage,
+            Instant stageAt
+    ) {
+        return """
+                {"loanApplicationId":"%s","lifecycleStage":"%s","status":"%s","decision":"%s","decisionReasonCode":"%s","merchantId":"%s","amount":"%s","tenorMonths":%d,"at":"%s"}
+                """.formatted(
+                escape(loanApplication.loanApplicationId()),
+                stage.name(),
+                loanApplication.status().name(),
+                loanApplication.decision().name(),
+                loanApplication.decisionReasonCode().name(),
+                escape(loanApplication.merchantId()),
+                loanApplication.amount().toPlainString(),
+                loanApplication.tenorMonths(),
+                stageAt.toString()
         );
     }
 
@@ -101,5 +191,12 @@ public class LoanApplicationService {
             LoanOriginationDecision decision,
             LoanOriginationDecisionReasonCode reasonCode
     ) {
+    }
+
+    private String escape(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 }

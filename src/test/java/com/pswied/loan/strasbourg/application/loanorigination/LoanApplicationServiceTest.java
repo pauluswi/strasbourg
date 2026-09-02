@@ -2,19 +2,29 @@ package com.pswied.loan.strasbourg.application.loanorigination;
 
 import com.pswied.loan.strasbourg.application.merchantidentity.MerchantIdentityValidationPort;
 import com.pswied.loan.strasbourg.application.merchantidentity.MerchantIdentityValidationService;
+import com.pswied.loan.strasbourg.application.outbox.OutboxEventStorePort;
+import com.pswied.loan.strasbourg.application.audit.LoanApplicationAuditTrailStorePort;
+import com.pswied.loan.strasbourg.domain.audit.LoanApplicationAuditTrailEntry;
 import com.pswied.loan.strasbourg.domain.loanorigination.ApplicantVerificationResult;
 import com.pswied.loan.strasbourg.domain.loanorigination.ApplicantVerificationStatus;
+import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplication;
+import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplicationLifecycleStage;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplicationStatus;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanOriginationDecision;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanOriginationDecisionReasonCode;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplicationSubmissionRequest;
 import com.pswied.loan.strasbourg.domain.merchantidentity.MerchantIdentityStatus;
 import com.pswied.loan.strasbourg.domain.merchantidentity.MerchantIdentityValidationResult;
+import com.pswied.loan.strasbourg.domain.outbox.OutboxEvent;
 import com.pswied.loan.strasbourg.infrastructure.outbox.InMemoryOutboxEventStore;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -22,11 +32,20 @@ class LoanApplicationServiceTest {
 
     @Test
     void approvesWhenApplicantAndMerchantChecksPass() {
+        InMemoryLoanApplicationStore loanApplicationStore = new InMemoryLoanApplicationStore();
+        InMemoryLoanApplicationAuditTrailStore auditTrailStore = new InMemoryLoanApplicationAuditTrailStore();
+        InMemoryOutboxEventStore outboxEventStore = new InMemoryOutboxEventStore();
         ApplicantVerificationPort applicantVerificationPort = (applicantName, amount, tenorMonths) ->
                 new ApplicantVerificationResult(ApplicantVerificationStatus.PASSED, "Applicant passed mock verification");
         MerchantIdentityValidationPort merchantValidationPort = verificationPortWithStatus(MerchantIdentityStatus.VERIFIED);
-        MerchantIdentityValidationService merchantService = merchantService(merchantValidationPort);
-        LoanApplicationService service = new LoanApplicationService(applicantVerificationPort, merchantService);
+        MerchantIdentityValidationService merchantService = merchantService(merchantValidationPort, outboxEventStore);
+        LoanApplicationService service = new LoanApplicationService(
+                applicantVerificationPort,
+                merchantService,
+                loanApplicationStore,
+                auditTrailStore,
+                outboxEventStore
+        );
 
         var result = service.submit(sampleRequest());
 
@@ -35,7 +54,7 @@ class LoanApplicationServiceTest {
         assertThat(result.merchantId()).isEqualTo("m-4001");
         assertThat(result.amount()).isEqualByComparingTo("15000.00");
         assertThat(result.tenorMonths()).isEqualTo(24);
-        assertThat(result.status()).isEqualTo(LoanApplicationStatus.SUBMITTED);
+        assertThat(result.status()).isEqualTo(LoanApplicationStatus.DECIDED);
         assertThat(result.decision()).isEqualTo(LoanOriginationDecision.APPROVED);
         assertThat(result.decisionReasonCode()).isEqualTo(LoanOriginationDecisionReasonCode.ALL_CHECKS_PASSED);
         assertThat(result.applicantVerificationStatus()).isEqualTo(ApplicantVerificationStatus.PASSED);
@@ -46,14 +65,32 @@ class LoanApplicationServiceTest {
         assertThat(result.merchantVerificationReference()).startsWith("SAP-S4-VER-");
         assertThat(result.verifiedAt()).isEqualTo(Instant.parse("2026-09-03T00:00:00Z"));
         assertThat(result.submittedAt()).isNotNull();
+
+        assertThat(loanApplicationStore.findByLoanApplicationId(result.loanApplicationId())).isPresent();
+        LoanApplication persisted = loanApplicationStore.findByLoanApplicationId(result.loanApplicationId()).orElseThrow();
+        assertThat(persisted.lifecycleStage()).isEqualTo(LoanApplicationLifecycleStage.DECIDED);
+        assertThat(persisted.decidedAt()).isNotNull();
+        assertThat(auditTrailStore.findByLoanApplicationId(result.loanApplicationId()))
+                .extracting(LoanApplicationAuditTrailEntry::eventType)
+                .containsExactly("LoanApplicationSubmitted", "LoanApplicationVerified", "LoanApplicationDecided");
+        assertThat(outboxEventStore.findPendingEvents())
+                .extracting(OutboxEvent::eventType)
+                .contains("MerchantIdentityValidated", "LoanApplicationSubmitted", "LoanApplicationVerified", "LoanApplicationDecided");
     }
 
     @Test
     void rejectsWhenApplicantCheckFails() {
+        InMemoryOutboxEventStore outboxEventStore = new InMemoryOutboxEventStore();
         ApplicantVerificationPort applicantVerificationPort = (applicantName, amount, tenorMonths) ->
                 new ApplicantVerificationResult(ApplicantVerificationStatus.REJECTED, "Applicant was flagged");
-        MerchantIdentityValidationService merchantService = merchantService(verificationPortWithStatus(MerchantIdentityStatus.VERIFIED));
-        LoanApplicationService service = new LoanApplicationService(applicantVerificationPort, merchantService);
+        MerchantIdentityValidationService merchantService = merchantService(verificationPortWithStatus(MerchantIdentityStatus.VERIFIED), outboxEventStore);
+        LoanApplicationService service = new LoanApplicationService(
+                applicantVerificationPort,
+                merchantService,
+                new InMemoryLoanApplicationStore(),
+                new InMemoryLoanApplicationAuditTrailStore(),
+                outboxEventStore
+        );
 
         var result = service.submit(sampleRequest());
 
@@ -63,10 +100,17 @@ class LoanApplicationServiceTest {
 
     @Test
     void routesToManualReviewWhenMerchantNeedsManualReview() {
+        InMemoryOutboxEventStore outboxEventStore = new InMemoryOutboxEventStore();
         ApplicantVerificationPort applicantVerificationPort = (applicantName, amount, tenorMonths) ->
                 new ApplicantVerificationResult(ApplicantVerificationStatus.PASSED, "Applicant passed mock verification");
-        MerchantIdentityValidationService merchantService = merchantService(verificationPortWithStatus(MerchantIdentityStatus.MANUAL_REVIEW));
-        LoanApplicationService service = new LoanApplicationService(applicantVerificationPort, merchantService);
+        MerchantIdentityValidationService merchantService = merchantService(verificationPortWithStatus(MerchantIdentityStatus.MANUAL_REVIEW), outboxEventStore);
+        LoanApplicationService service = new LoanApplicationService(
+                applicantVerificationPort,
+                merchantService,
+                new InMemoryLoanApplicationStore(),
+                new InMemoryLoanApplicationAuditTrailStore(),
+                outboxEventStore
+        );
 
         var result = service.submit(sampleRequest());
 
@@ -85,8 +129,8 @@ class LoanApplicationServiceTest {
         );
     }
 
-    private MerchantIdentityValidationService merchantService(MerchantIdentityValidationPort port) {
-        return new MerchantIdentityValidationService(port, new InMemoryOutboxEventStore());
+    private MerchantIdentityValidationService merchantService(MerchantIdentityValidationPort port, OutboxEventStorePort outboxEventStorePort) {
+        return new MerchantIdentityValidationService(port, outboxEventStorePort);
     }
 
     private LoanApplicationSubmissionRequest sampleRequest() {
@@ -98,5 +142,35 @@ class LoanApplicationServiceTest {
                 new BigDecimal("15000.00"),
                 24
         );
+    }
+
+    private static final class InMemoryLoanApplicationStore implements LoanApplicationStorePort {
+        private final ConcurrentHashMap<String, LoanApplication> values = new ConcurrentHashMap<>();
+
+        @Override
+        public void save(LoanApplication loanApplication) {
+            values.put(loanApplication.loanApplicationId(), loanApplication);
+        }
+
+        @Override
+        public Optional<LoanApplication> findByLoanApplicationId(String loanApplicationId) {
+            return Optional.ofNullable(values.get(loanApplicationId));
+        }
+    }
+
+    private static final class InMemoryLoanApplicationAuditTrailStore implements LoanApplicationAuditTrailStorePort {
+        private final List<LoanApplicationAuditTrailEntry> values = new ArrayList<>();
+
+        @Override
+        public void save(LoanApplicationAuditTrailEntry entry) {
+            values.add(entry);
+        }
+
+        @Override
+        public List<LoanApplicationAuditTrailEntry> findByLoanApplicationId(String loanApplicationId) {
+            return values.stream()
+                    .filter(entry -> entry.loanApplicationId().equals(loanApplicationId))
+                    .toList();
+        }
     }
 }
