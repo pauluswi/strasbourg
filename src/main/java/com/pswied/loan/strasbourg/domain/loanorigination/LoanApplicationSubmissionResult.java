@@ -12,6 +12,8 @@ public record LoanApplicationSubmissionResult(
         BigDecimal amount,
         int tenorMonths,
         LoanApplicationStatus status,
+        LoanOriginationDecision decision,
+        LoanOriginationDecisionReasonCode decisionReasonCode,
         ApplicantVerificationStatus applicantVerificationStatus,
         String applicantVerificationReason,
         MerchantIdentityStatus merchantVerificationStatus,

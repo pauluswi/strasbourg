@@ -34,6 +34,8 @@ class LoanApplicationResourceTest {
                 .body("amount", equalTo(15000.0F))
                 .body("tenorMonths", equalTo(24))
                 .body("status", equalTo("SUBMITTED"))
+                .body("decision", equalTo("APPROVED"))
+                .body("decisionReasonCode", equalTo("ALL_CHECKS_PASSED"))
                 .body("applicantVerificationStatus", equalTo("PASSED"))
                 .body("applicantVerificationReason", equalTo("Applicant passed mock verification"))
                 .body("merchantVerificationStatus", equalTo("VERIFIED"))
