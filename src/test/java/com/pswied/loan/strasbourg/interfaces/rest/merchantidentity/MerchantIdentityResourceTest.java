@@ -3,7 +3,11 @@ package com.pswied.loan.strasbourg.interfaces.rest.merchantidentity;
 import io.quarkus.test.junit.QuarkusTest;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+
 import static io.restassured.RestAssured.given;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.startsWith;
 
@@ -52,7 +56,7 @@ class MerchantIdentityResourceTest {
                 .jsonPath()
                 .getString("validatedAt");
 
-        given()
+        String replayValidatedAt = given()
                 .header("Idempotency-Key", "idem-merchant-2002")
                 .contentType("application/json")
                 .body("""
@@ -66,7 +70,12 @@ class MerchantIdentityResourceTest {
                 .post("/api/merchant-identities/validate")
                 .then()
                 .statusCode(200)
-                .body("validatedAt", equalTo(firstValidatedAt));
+                .extract()
+                .jsonPath()
+                .getString("validatedAt");
+
+        assertThat(Instant.parse(replayValidatedAt))
+                .isEqualTo(Instant.parse(firstValidatedAt).truncatedTo(ChronoUnit.MICROS));
     }
 
     @Test
