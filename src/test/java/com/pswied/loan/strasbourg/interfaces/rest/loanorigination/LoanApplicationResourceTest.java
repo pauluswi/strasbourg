@@ -10,10 +10,10 @@ import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
 
 import static io.restassured.RestAssured.given;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
-import static org.assertj.core.api.Assertions.assertThat;
 
 @QuarkusTest
 class LoanApplicationResourceTest {
@@ -53,6 +53,8 @@ class LoanApplicationResourceTest {
                 .body("status", equalTo("DECIDED"))
                 .body("decision", equalTo("APPROVED"))
                 .body("decisionReasonCode", equalTo("ALL_CHECKS_PASSED"))
+                .body("eligibilityStatus", equalTo("ELIGIBLE"))
+                .body("eligibilityReason", equalTo("Application passed initial eligibility policy"))
                 .body("applicantVerificationStatus", equalTo("PASSED"))
                 .body("applicantVerificationReason", equalTo("Applicant passed mock verification"))
                 .body("merchantVerificationStatus", equalTo("VERIFIED"))
@@ -67,6 +69,7 @@ class LoanApplicationResourceTest {
         var persisted = loanApplicationStore.findByLoanApplicationId(loanApplicationId);
         assertThat(persisted).isPresent();
         assertThat(persisted.orElseThrow().lifecycleStage()).isEqualTo(LoanApplicationLifecycleStage.DECIDED);
+        assertThat(persisted.orElseThrow().eligibilityStatus().name()).isEqualTo("ELIGIBLE");
         assertThat(persisted.orElseThrow().decidedAt()).isNotNull();
 
         var auditEntries = loanApplicationAuditTrailStore.findByLoanApplicationId(loanApplicationId);
@@ -110,6 +113,7 @@ class LoanApplicationResourceTest {
                 .then()
                 .statusCode(200)
                 .body("loanApplicationId", equalTo(loanApplicationId))
+                .body("eligibilityStatus", equalTo("ELIGIBLE"))
                 .body("merchantVerificationStatus", equalTo("VERIFIED"))
                 .body("merchantVerificationSourceSystem", equalTo("SAP_S4"))
                 .body("merchantVerificationReference", notNullValue())
@@ -126,5 +130,28 @@ class LoanApplicationResourceTest {
                 .get("/api/loan-applications/{id}", "loan-missing-9999")
                 .then()
                 .statusCode(404);
+    }
+
+    @Test
+    void routesToManualReviewWhenEligibilityThresholdIsExceeded() {
+        given()
+                .contentType("application/json")
+                .body("""
+                        {
+                          "applicantName": "Dana Owner",
+                          "merchantId": "m-5003",
+                          "merchantLegalName": "Gamma Merchant",
+                          "merchantTaxNumber": "TAX-5003",
+                          "amount": 60000.00,
+                          "tenorMonths": 24
+                        }
+                        """)
+                .when()
+                .post("/api/loan-applications")
+                .then()
+                .statusCode(200)
+                .body("decision", equalTo("MANUAL_REVIEW"))
+                .body("decisionReasonCode", equalTo("ELIGIBILITY_MANUAL_REVIEW_REQUIRED"))
+                .body("eligibilityStatus", equalTo("MANUAL_REVIEW"));
     }
 }

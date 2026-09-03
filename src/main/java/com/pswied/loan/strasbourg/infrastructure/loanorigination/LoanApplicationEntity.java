@@ -1,6 +1,7 @@
 package com.pswied.loan.strasbourg.infrastructure.loanorigination;
 
 import com.pswied.loan.strasbourg.domain.loanorigination.ApplicantVerificationStatus;
+import com.pswied.loan.strasbourg.domain.loanorigination.EligibilityAssessmentStatus;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplication;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplicationLifecycleStage;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplicationStatus;
@@ -55,6 +56,13 @@ public class LoanApplicationEntity extends PanacheEntityBase {
     public LoanOriginationDecisionReasonCode decisionReasonCode;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "eligibility_status", nullable = false, length = 32)
+    public EligibilityAssessmentStatus eligibilityStatus;
+
+    @Column(name = "eligibility_reason", columnDefinition = "TEXT")
+    public String eligibilityReason;
+
+    @Enumerated(EnumType.STRING)
     @Column(name = "applicant_verification_status", nullable = false, length = 32)
     public ApplicantVerificationStatus applicantVerificationStatus;
 
@@ -94,6 +102,8 @@ public class LoanApplicationEntity extends PanacheEntityBase {
         entity.lifecycleStage = loanApplication.lifecycleStage();
         entity.decision = loanApplication.decision();
         entity.decisionReasonCode = loanApplication.decisionReasonCode();
+        entity.eligibilityStatus = loanApplication.eligibilityStatus();
+        entity.eligibilityReason = loanApplication.eligibilityReason();
         entity.applicantVerificationStatus = loanApplication.applicantVerificationStatus();
         entity.applicantVerificationReason = loanApplication.applicantVerificationReason();
         entity.merchantVerificationStatus = loanApplication.merchantVerificationStatus();
@@ -117,6 +127,8 @@ public class LoanApplicationEntity extends PanacheEntityBase {
                 lifecycleStage,
                 decision,
                 decisionReasonCode,
+                eligibilityStatus,
+                eligibilityReason,
                 applicantVerificationStatus,
                 applicantVerificationReason,
                 merchantVerificationStatus,

@@ -27,6 +27,8 @@ public class PostgreSqlLoanApplicationStore implements LoanApplicationStorePort,
         managed.lifecycleStage = loanApplication.lifecycleStage();
         managed.decision = loanApplication.decision();
         managed.decisionReasonCode = loanApplication.decisionReasonCode();
+        managed.eligibilityStatus = loanApplication.eligibilityStatus();
+        managed.eligibilityReason = loanApplication.eligibilityReason();
         managed.applicantVerificationStatus = loanApplication.applicantVerificationStatus();
         managed.applicantVerificationReason = loanApplication.applicantVerificationReason();
         managed.merchantVerificationStatus = loanApplication.merchantVerificationStatus();

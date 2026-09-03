@@ -16,6 +16,8 @@ public record LoanApplicationJourneyResult(
         LoanApplicationLifecycleStage lifecycleStage,
         LoanOriginationDecision decision,
         LoanOriginationDecisionReasonCode decisionReasonCode,
+        EligibilityAssessmentStatus eligibilityStatus,
+        String eligibilityReason,
         ApplicantVerificationStatus applicantVerificationStatus,
         String applicantVerificationReason,
         MerchantIdentityStatus merchantVerificationStatus,
