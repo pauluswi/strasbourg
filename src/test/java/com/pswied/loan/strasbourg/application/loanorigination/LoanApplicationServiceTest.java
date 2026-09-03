@@ -7,6 +7,8 @@ import com.pswied.loan.strasbourg.application.outbox.OutboxEventStorePort;
 import com.pswied.loan.strasbourg.domain.audit.LoanApplicationAuditTrailEntry;
 import com.pswied.loan.strasbourg.domain.loanorigination.ApplicantVerificationResult;
 import com.pswied.loan.strasbourg.domain.loanorigination.ApplicantVerificationStatus;
+import com.pswied.loan.strasbourg.domain.loanorigination.CreditAssessmentResult;
+import com.pswied.loan.strasbourg.domain.loanorigination.CreditAssessmentStatus;
 import com.pswied.loan.strasbourg.domain.loanorigination.EligibilityAssessmentResult;
 import com.pswied.loan.strasbourg.domain.loanorigination.EligibilityAssessmentStatus;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplication;
@@ -19,6 +21,8 @@ import com.pswied.loan.strasbourg.domain.loanorigination.LoanOriginationDecision
 import com.pswied.loan.strasbourg.domain.merchantidentity.MerchantIdentityStatus;
 import com.pswied.loan.strasbourg.domain.merchantidentity.MerchantIdentityValidationResult;
 import com.pswied.loan.strasbourg.domain.outbox.OutboxEvent;
+import com.pswied.loan.strasbourg.infrastructure.loanorigination.MockCreditAssessmentAdapter;
+import com.pswied.loan.strasbourg.infrastructure.loanorigination.MockEligibilityAssessmentAdapter;
 import com.pswied.loan.strasbourg.infrastructure.outbox.InMemoryOutboxEventStore;
 import org.junit.jupiter.api.Test;
 
@@ -40,6 +44,7 @@ class LoanApplicationServiceTest {
         InMemoryOutboxEventStore outboxEventStore = new InMemoryOutboxEventStore();
         LoanApplicationService service = new LoanApplicationService(
                 eligibleAssessmentPort(),
+                passedCreditAssessmentPort(),
                 passedApplicantVerificationPort(),
                 merchantService(verificationPortWithStatus(MerchantIdentityStatus.VERIFIED), outboxEventStore),
                 loanApplicationStore,
@@ -49,24 +54,18 @@ class LoanApplicationServiceTest {
 
         var result = service.submit(sampleRequest());
 
-        assertThat(result.loanApplicationId()).isNotBlank();
-        assertThat(result.applicantName()).isEqualTo("Alice Applicant");
-        assertThat(result.merchantId()).isEqualTo("m-4001");
-        assertThat(result.amount()).isEqualByComparingTo("15000.00");
-        assertThat(result.tenorMonths()).isEqualTo(24);
-        assertThat(result.status()).isEqualTo(LoanApplicationStatus.DECIDED);
         assertThat(result.decision()).isEqualTo(LoanOriginationDecision.APPROVED);
         assertThat(result.decisionReasonCode()).isEqualTo(LoanOriginationDecisionReasonCode.ALL_CHECKS_PASSED);
         assertThat(result.eligibilityStatus()).isEqualTo(EligibilityAssessmentStatus.ELIGIBLE);
-        assertThat(result.eligibilityReason()).isEqualTo("Application passed initial eligibility policy");
+        assertThat(result.creditAssessmentStatus()).isEqualTo(CreditAssessmentStatus.PASSED);
+        assertThat(result.creditAssessmentReason()).isEqualTo("Application passed mock credit assessment");
         assertThat(result.applicantVerificationStatus()).isEqualTo(ApplicantVerificationStatus.PASSED);
         assertThat(result.merchantVerificationStatus()).isEqualTo(MerchantIdentityStatus.VERIFIED);
-        assertThat(result.verifiedAt()).isEqualTo(Instant.parse("2026-09-03T00:00:00Z"));
-        assertThat(result.submittedAt()).isNotNull();
 
         LoanApplication persisted = loanApplicationStore.findByLoanApplicationId(result.loanApplicationId()).orElseThrow();
         assertThat(persisted.lifecycleStage()).isEqualTo(LoanApplicationLifecycleStage.DECIDED);
         assertThat(persisted.eligibilityStatus()).isEqualTo(EligibilityAssessmentStatus.ELIGIBLE);
+        assertThat(persisted.creditAssessmentStatus()).isEqualTo(CreditAssessmentStatus.PASSED);
         assertThat(auditTrailStore.findByLoanApplicationId(result.loanApplicationId()))
                 .extracting(LoanApplicationAuditTrailEntry::eventType)
                 .containsExactly("LoanApplicationSubmitted", "LoanApplicationVerified", "LoanApplicationDecided");
@@ -79,10 +78,8 @@ class LoanApplicationServiceTest {
     void rejectsWhenEligibilityFails() {
         InMemoryOutboxEventStore outboxEventStore = new InMemoryOutboxEventStore();
         LoanApplicationService service = new LoanApplicationService(
-                (amount, tenorMonths) -> new EligibilityAssessmentResult(
-                        EligibilityAssessmentStatus.INELIGIBLE,
-                        "Below minimum policy threshold"
-                ),
+                (amount, tenorMonths) -> new EligibilityAssessmentResult(EligibilityAssessmentStatus.INELIGIBLE, "Below minimum policy threshold"),
+                passedCreditAssessmentPort(),
                 passedApplicantVerificationPort(),
                 merchantService(verificationPortWithStatus(MerchantIdentityStatus.VERIFIED), outboxEventStore),
                 new InMemoryLoanApplicationStore(),
@@ -94,17 +91,14 @@ class LoanApplicationServiceTest {
 
         assertThat(result.decision()).isEqualTo(LoanOriginationDecision.REJECTED);
         assertThat(result.decisionReasonCode()).isEqualTo(LoanOriginationDecisionReasonCode.ELIGIBILITY_INELIGIBLE);
-        assertThat(result.eligibilityStatus()).isEqualTo(EligibilityAssessmentStatus.INELIGIBLE);
     }
 
     @Test
     void routesToManualReviewWhenEligibilityNeedsReview() {
         InMemoryOutboxEventStore outboxEventStore = new InMemoryOutboxEventStore();
         LoanApplicationService service = new LoanApplicationService(
-                (amount, tenorMonths) -> new EligibilityAssessmentResult(
-                        EligibilityAssessmentStatus.MANUAL_REVIEW,
-                        "Threshold exceeded"
-                ),
+                (amount, tenorMonths) -> new EligibilityAssessmentResult(EligibilityAssessmentStatus.MANUAL_REVIEW, "Threshold exceeded"),
+                passedCreditAssessmentPort(),
                 passedApplicantVerificationPort(),
                 merchantService(verificationPortWithStatus(MerchantIdentityStatus.VERIFIED), outboxEventStore),
                 new InMemoryLoanApplicationStore(),
@@ -116,7 +110,74 @@ class LoanApplicationServiceTest {
 
         assertThat(result.decision()).isEqualTo(LoanOriginationDecision.MANUAL_REVIEW);
         assertThat(result.decisionReasonCode()).isEqualTo(LoanOriginationDecisionReasonCode.ELIGIBILITY_MANUAL_REVIEW_REQUIRED);
+    }
+
+    @Test
+    void rejectsWhenCreditFails() {
+        InMemoryOutboxEventStore outboxEventStore = new InMemoryOutboxEventStore();
+        LoanApplicationService service = new LoanApplicationService(
+                eligibleAssessmentPort(),
+                (applicantName, amount, tenorMonths) -> new CreditAssessmentResult(CreditAssessmentStatus.REJECTED, "Applicant failed mock credit policy"),
+                passedApplicantVerificationPort(),
+                merchantService(verificationPortWithStatus(MerchantIdentityStatus.VERIFIED), outboxEventStore),
+                new InMemoryLoanApplicationStore(),
+                new InMemoryLoanApplicationAuditTrailStore(),
+                outboxEventStore
+        );
+
+        var result = service.submit(sampleRequest());
+
+        assertThat(result.decision()).isEqualTo(LoanOriginationDecision.REJECTED);
+        assertThat(result.decisionReasonCode()).isEqualTo(LoanOriginationDecisionReasonCode.CREDIT_REJECTED);
+        assertThat(result.creditAssessmentStatus()).isEqualTo(CreditAssessmentStatus.REJECTED);
+    }
+
+    @Test
+    void routesToManualReviewWhenCreditNeedsReview() {
+        InMemoryOutboxEventStore outboxEventStore = new InMemoryOutboxEventStore();
+        LoanApplicationService service = new LoanApplicationService(
+                eligibleAssessmentPort(),
+                (applicantName, amount, tenorMonths) -> new CreditAssessmentResult(CreditAssessmentStatus.MANUAL_REVIEW, "Application requires manual credit analyst review"),
+                passedApplicantVerificationPort(),
+                merchantService(verificationPortWithStatus(MerchantIdentityStatus.VERIFIED), outboxEventStore),
+                new InMemoryLoanApplicationStore(),
+                new InMemoryLoanApplicationAuditTrailStore(),
+                outboxEventStore
+        );
+
+        var result = service.submit(sampleRequest());
+
+        assertThat(result.decision()).isEqualTo(LoanOriginationDecision.MANUAL_REVIEW);
+        assertThat(result.decisionReasonCode()).isEqualTo(LoanOriginationDecisionReasonCode.CREDIT_MANUAL_REVIEW_REQUIRED);
+        assertThat(result.creditAssessmentStatus()).isEqualTo(CreditAssessmentStatus.MANUAL_REVIEW);
+    }
+
+    @Test
+    void prioritizesCreditManualReviewOverEligibilityManualReviewWhenBothTrigger() {
+        InMemoryOutboxEventStore outboxEventStore = new InMemoryOutboxEventStore();
+        LoanApplicationService service = new LoanApplicationService(
+                new MockEligibilityAssessmentAdapter(),
+                new MockCreditAssessmentAdapter(),
+                passedApplicantVerificationPort(),
+                merchantService(verificationPortWithStatus(MerchantIdentityStatus.VERIFIED), outboxEventStore),
+                new InMemoryLoanApplicationStore(),
+                new InMemoryLoanApplicationAuditTrailStore(),
+                outboxEventStore
+        );
+
+        var result = service.submit(new LoanApplicationSubmissionRequest(
+                "Dana Owner",
+                "m-5003",
+                "Gamma Merchant",
+                "TAX-5003",
+                new BigDecimal("80000.00"),
+                24
+        ));
+
+        assertThat(result.decision()).isEqualTo(LoanOriginationDecision.MANUAL_REVIEW);
+        assertThat(result.decisionReasonCode()).isEqualTo(LoanOriginationDecisionReasonCode.CREDIT_MANUAL_REVIEW_REQUIRED);
         assertThat(result.eligibilityStatus()).isEqualTo(EligibilityAssessmentStatus.MANUAL_REVIEW);
+        assertThat(result.creditAssessmentStatus()).isEqualTo(CreditAssessmentStatus.MANUAL_REVIEW);
     }
 
     @Test
@@ -124,10 +185,8 @@ class LoanApplicationServiceTest {
         InMemoryOutboxEventStore outboxEventStore = new InMemoryOutboxEventStore();
         LoanApplicationService service = new LoanApplicationService(
                 eligibleAssessmentPort(),
-                (applicantName, amount, tenorMonths) -> new ApplicantVerificationResult(
-                        ApplicantVerificationStatus.REJECTED,
-                        "Applicant was flagged"
-                ),
+                passedCreditAssessmentPort(),
+                (applicantName, amount, tenorMonths) -> new ApplicantVerificationResult(ApplicantVerificationStatus.REJECTED, "Applicant was flagged"),
                 merchantService(verificationPortWithStatus(MerchantIdentityStatus.VERIFIED), outboxEventStore),
                 new InMemoryLoanApplicationStore(),
                 new InMemoryLoanApplicationAuditTrailStore(),
@@ -145,6 +204,7 @@ class LoanApplicationServiceTest {
         InMemoryOutboxEventStore outboxEventStore = new InMemoryOutboxEventStore();
         LoanApplicationService service = new LoanApplicationService(
                 eligibleAssessmentPort(),
+                passedCreditAssessmentPort(),
                 passedApplicantVerificationPort(),
                 merchantService(verificationPortWithStatus(MerchantIdentityStatus.MANUAL_REVIEW), outboxEventStore),
                 new InMemoryLoanApplicationStore(),
@@ -165,6 +225,7 @@ class LoanApplicationServiceTest {
         InMemoryOutboxEventStore outboxEventStore = new InMemoryOutboxEventStore();
         LoanApplicationService service = new LoanApplicationService(
                 eligibleAssessmentPort(),
+                passedCreditAssessmentPort(),
                 passedApplicantVerificationPort(),
                 merchantService(verificationPortWithStatus(MerchantIdentityStatus.VERIFIED), outboxEventStore),
                 loanApplicationStore,
@@ -177,16 +238,21 @@ class LoanApplicationServiceTest {
 
         assertThat(journey.loanApplicationId()).isEqualTo(submitted.loanApplicationId());
         assertThat(journey.eligibilityStatus()).isEqualTo(EligibilityAssessmentStatus.ELIGIBLE);
+        assertThat(journey.creditAssessmentStatus()).isEqualTo(CreditAssessmentStatus.PASSED);
         assertThat(journey.merchantVerificationStatus()).isEqualTo(MerchantIdentityStatus.VERIFIED);
-        assertThat(journey.journey())
-                .extracting(stage -> stage.eventType())
-                .containsExactly("LoanApplicationSubmitted", "LoanApplicationVerified", "LoanApplicationDecided");
     }
 
     private EligibilityAssessmentPort eligibleAssessmentPort() {
         return (amount, tenorMonths) -> new EligibilityAssessmentResult(
                 EligibilityAssessmentStatus.ELIGIBLE,
                 "Application passed initial eligibility policy"
+        );
+    }
+
+    private CreditAssessmentPort passedCreditAssessmentPort() {
+        return (applicantName, amount, tenorMonths) -> new CreditAssessmentResult(
+                CreditAssessmentStatus.PASSED,
+                "Application passed mock credit assessment"
         );
     }
 

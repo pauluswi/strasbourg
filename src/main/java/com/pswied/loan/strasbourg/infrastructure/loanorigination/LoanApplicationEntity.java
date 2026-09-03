@@ -1,6 +1,7 @@
 package com.pswied.loan.strasbourg.infrastructure.loanorigination;
 
 import com.pswied.loan.strasbourg.domain.loanorigination.ApplicantVerificationStatus;
+import com.pswied.loan.strasbourg.domain.loanorigination.CreditAssessmentStatus;
 import com.pswied.loan.strasbourg.domain.loanorigination.EligibilityAssessmentStatus;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplication;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplicationLifecycleStage;
@@ -63,6 +64,13 @@ public class LoanApplicationEntity extends PanacheEntityBase {
     public String eligibilityReason;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "credit_assessment_status", nullable = false, length = 32)
+    public CreditAssessmentStatus creditAssessmentStatus;
+
+    @Column(name = "credit_assessment_reason", columnDefinition = "TEXT")
+    public String creditAssessmentReason;
+
+    @Enumerated(EnumType.STRING)
     @Column(name = "applicant_verification_status", nullable = false, length = 32)
     public ApplicantVerificationStatus applicantVerificationStatus;
 
@@ -104,6 +112,8 @@ public class LoanApplicationEntity extends PanacheEntityBase {
         entity.decisionReasonCode = loanApplication.decisionReasonCode();
         entity.eligibilityStatus = loanApplication.eligibilityStatus();
         entity.eligibilityReason = loanApplication.eligibilityReason();
+        entity.creditAssessmentStatus = loanApplication.creditAssessmentStatus();
+        entity.creditAssessmentReason = loanApplication.creditAssessmentReason();
         entity.applicantVerificationStatus = loanApplication.applicantVerificationStatus();
         entity.applicantVerificationReason = loanApplication.applicantVerificationReason();
         entity.merchantVerificationStatus = loanApplication.merchantVerificationStatus();
@@ -129,6 +139,8 @@ public class LoanApplicationEntity extends PanacheEntityBase {
                 decisionReasonCode,
                 eligibilityStatus,
                 eligibilityReason,
+                creditAssessmentStatus,
+                creditAssessmentReason,
                 applicantVerificationStatus,
                 applicantVerificationReason,
                 merchantVerificationStatus,

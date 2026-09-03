@@ -4,6 +4,7 @@ import com.pswied.loan.strasbourg.application.audit.LoanApplicationAuditTrailSto
 import com.pswied.loan.strasbourg.application.merchantidentity.MerchantIdentityValidationService;
 import com.pswied.loan.strasbourg.application.outbox.OutboxEventStorePort;
 import com.pswied.loan.strasbourg.domain.audit.LoanApplicationAuditTrailEntry;
+import com.pswied.loan.strasbourg.domain.loanorigination.CreditAssessmentStatus;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplication;
 import com.pswied.loan.strasbourg.domain.loanorigination.EligibilityAssessmentStatus;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplicationJourneyResult;
@@ -30,6 +31,7 @@ import java.util.UUID;
 public class LoanApplicationService {
 
     private final EligibilityAssessmentPort eligibilityAssessmentPort;
+    private final CreditAssessmentPort creditAssessmentPort;
     private final ApplicantVerificationPort applicantVerificationPort;
     private final MerchantIdentityValidationService merchantIdentityValidationService;
     private final LoanApplicationStorePort loanApplicationStorePort;
@@ -39,6 +41,7 @@ public class LoanApplicationService {
     @Inject
     public LoanApplicationService(
             EligibilityAssessmentPort eligibilityAssessmentPort,
+            CreditAssessmentPort creditAssessmentPort,
             ApplicantVerificationPort applicantVerificationPort,
             MerchantIdentityValidationService merchantIdentityValidationService,
             LoanApplicationStorePort loanApplicationStorePort,
@@ -46,6 +49,7 @@ public class LoanApplicationService {
             OutboxEventStorePort outboxEventStorePort
     ) {
         this.eligibilityAssessmentPort = eligibilityAssessmentPort;
+        this.creditAssessmentPort = creditAssessmentPort;
         this.applicantVerificationPort = applicantVerificationPort;
         this.merchantIdentityValidationService = merchantIdentityValidationService;
         this.loanApplicationStorePort = loanApplicationStorePort;
@@ -57,6 +61,11 @@ public class LoanApplicationService {
         String loanApplicationId = UUID.randomUUID().toString();
         Instant submittedAt = Instant.now();
         var eligibilityAssessment = eligibilityAssessmentPort.assess(
+                request.amount(),
+                request.tenorMonths()
+        );
+        var creditAssessment = creditAssessmentPort.assess(
+                request.applicantName().trim(),
                 request.amount(),
                 request.tenorMonths()
         );
@@ -75,6 +84,7 @@ public class LoanApplicationService {
         Instant verifiedAt = merchantVerification.validatedAt();
         var decision = decide(
                 eligibilityAssessment.status(),
+                creditAssessment.status(),
                 applicantVerification.status(),
                 merchantVerification.status()
         );
@@ -92,6 +102,8 @@ public class LoanApplicationService {
                 decision.reasonCode(),
                 eligibilityAssessment.status(),
                 eligibilityAssessment.reason(),
+                creditAssessment.status(),
+                creditAssessment.reason(),
                 applicantVerification.status(),
                 applicantVerification.reason(),
                 merchantVerification.status(),
@@ -116,6 +128,8 @@ public class LoanApplicationService {
                 loanApplication.decisionReasonCode(),
                 loanApplication.eligibilityStatus(),
                 loanApplication.eligibilityReason(),
+                loanApplication.creditAssessmentStatus(),
+                loanApplication.creditAssessmentReason(),
                 loanApplication.applicantVerificationStatus(),
                 loanApplication.applicantVerificationReason(),
                 loanApplication.merchantVerificationStatus(),
@@ -153,6 +167,8 @@ public class LoanApplicationService {
                             loanApplication.decisionReasonCode(),
                             loanApplication.eligibilityStatus(),
                             loanApplication.eligibilityReason(),
+                            loanApplication.creditAssessmentStatus(),
+                            loanApplication.creditAssessmentReason(),
                             loanApplication.applicantVerificationStatus(),
                             loanApplication.applicantVerificationReason(),
                             loanApplication.merchantVerificationStatus(),
@@ -202,7 +218,7 @@ public class LoanApplicationService {
             Instant stageAt
     ) {
         return """
-                {"loanApplicationId":"%s","lifecycleStage":"%s","status":"%s","decision":"%s","decisionReasonCode":"%s","eligibilityStatus":"%s","applicantVerificationStatus":"%s","merchantVerificationStatus":"%s","merchantId":"%s","amount":"%s","tenorMonths":%d,"at":"%s"}
+                {"loanApplicationId":"%s","lifecycleStage":"%s","status":"%s","decision":"%s","decisionReasonCode":"%s","eligibilityStatus":"%s","creditAssessmentStatus":"%s","applicantVerificationStatus":"%s","merchantVerificationStatus":"%s","merchantId":"%s","amount":"%s","tenorMonths":%d,"at":"%s"}
                 """.formatted(
                 escape(loanApplication.loanApplicationId()),
                 stage.name(),
@@ -210,6 +226,7 @@ public class LoanApplicationService {
                 loanApplication.decision().name(),
                 loanApplication.decisionReasonCode().name(),
                 loanApplication.eligibilityStatus().name(),
+                loanApplication.creditAssessmentStatus().name(),
                 loanApplication.applicantVerificationStatus().name(),
                 loanApplication.merchantVerificationStatus().name(),
                 escape(loanApplication.merchantId()),
@@ -221,6 +238,7 @@ public class LoanApplicationService {
 
     private DecisionResult decide(
             EligibilityAssessmentStatus eligibilityStatus,
+            CreditAssessmentStatus creditStatus,
             ApplicantVerificationStatus applicantStatus,
             MerchantIdentityStatus merchantStatus
     ) {
@@ -230,10 +248,10 @@ public class LoanApplicationService {
                     LoanOriginationDecisionReasonCode.ELIGIBILITY_INELIGIBLE
             );
         }
-        if (eligibilityStatus == EligibilityAssessmentStatus.MANUAL_REVIEW) {
+        if (creditStatus == CreditAssessmentStatus.REJECTED) {
             return new DecisionResult(
-                    LoanOriginationDecision.MANUAL_REVIEW,
-                    LoanOriginationDecisionReasonCode.ELIGIBILITY_MANUAL_REVIEW_REQUIRED
+                    LoanOriginationDecision.REJECTED,
+                    LoanOriginationDecisionReasonCode.CREDIT_REJECTED
             );
         }
         if (applicantStatus == ApplicantVerificationStatus.REJECTED) {
@@ -248,6 +266,12 @@ public class LoanApplicationService {
                     LoanOriginationDecisionReasonCode.MERCHANT_REJECTED
             );
         }
+        if (creditStatus == CreditAssessmentStatus.MANUAL_REVIEW) {
+            return new DecisionResult(
+                    LoanOriginationDecision.MANUAL_REVIEW,
+                    LoanOriginationDecisionReasonCode.CREDIT_MANUAL_REVIEW_REQUIRED
+            );
+        }
         if (applicantStatus == ApplicantVerificationStatus.MANUAL_REVIEW) {
             return new DecisionResult(
                     LoanOriginationDecision.MANUAL_REVIEW,
@@ -258,6 +282,12 @@ public class LoanApplicationService {
             return new DecisionResult(
                     LoanOriginationDecision.MANUAL_REVIEW,
                     LoanOriginationDecisionReasonCode.MERCHANT_MANUAL_REVIEW_REQUIRED
+            );
+        }
+        if (eligibilityStatus == EligibilityAssessmentStatus.MANUAL_REVIEW) {
+            return new DecisionResult(
+                    LoanOriginationDecision.MANUAL_REVIEW,
+                    LoanOriginationDecisionReasonCode.ELIGIBILITY_MANUAL_REVIEW_REQUIRED
             );
         }
         return new DecisionResult(

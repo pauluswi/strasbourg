@@ -16,6 +16,8 @@ public record LoanApplicationSubmissionResult(
         LoanOriginationDecisionReasonCode decisionReasonCode,
         EligibilityAssessmentStatus eligibilityStatus,
         String eligibilityReason,
+        CreditAssessmentStatus creditAssessmentStatus,
+        String creditAssessmentReason,
         ApplicantVerificationStatus applicantVerificationStatus,
         String applicantVerificationReason,
         MerchantIdentityStatus merchantVerificationStatus,

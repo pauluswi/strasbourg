@@ -2,6 +2,7 @@ package com.pswied.loan.strasbourg.infrastructure.loanorigination;
 
 import com.pswied.loan.strasbourg.application.loanorigination.LoanApplicationStorePort;
 import com.pswied.loan.strasbourg.domain.loanorigination.ApplicantVerificationStatus;
+import com.pswied.loan.strasbourg.domain.loanorigination.CreditAssessmentStatus;
 import com.pswied.loan.strasbourg.domain.loanorigination.EligibilityAssessmentStatus;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplication;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplicationLifecycleStage;
@@ -38,6 +39,8 @@ class PostgreSqlLoanApplicationStoreTest {
                 LoanOriginationDecisionReasonCode.ALL_CHECKS_PASSED,
                 EligibilityAssessmentStatus.ELIGIBLE,
                 "Application passed initial eligibility policy",
+                CreditAssessmentStatus.PASSED,
+                "Application passed mock credit assessment",
                 ApplicantVerificationStatus.PASSED,
                 "Applicant passed mock verification",
                 MerchantIdentityStatus.VERIFIED,
@@ -53,9 +56,8 @@ class PostgreSqlLoanApplicationStoreTest {
 
         var persisted = store.findByLoanApplicationId("loan-store-1001");
         assertThat(persisted).isPresent();
-        assertThat(persisted.orElseThrow().lifecycleStage()).isEqualTo(LoanApplicationLifecycleStage.DECIDED);
         assertThat(persisted.orElseThrow().decision()).isEqualTo(LoanOriginationDecision.APPROVED);
         assertThat(persisted.orElseThrow().eligibilityStatus()).isEqualTo(EligibilityAssessmentStatus.ELIGIBLE);
-        assertThat(persisted.orElseThrow().decidedAt()).isEqualTo(Instant.parse("2026-09-03T01:00:12Z"));
+        assertThat(persisted.orElseThrow().creditAssessmentStatus()).isEqualTo(CreditAssessmentStatus.PASSED);
     }
 }

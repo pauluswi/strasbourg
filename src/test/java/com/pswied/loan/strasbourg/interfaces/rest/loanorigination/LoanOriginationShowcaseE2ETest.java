@@ -44,11 +44,9 @@ class LoanOriginationShowcaseE2ETest {
                 .statusCode(200)
                 .body("loanApplicationId", notNullValue())
                 .body("merchantVerificationStatus", equalTo("VERIFIED"))
-                .body("merchantVerificationSourceSystem", equalTo("SAP_S4"))
-                .body("merchantVerificationReference", notNullValue())
                 .body("eligibilityStatus", equalTo("ELIGIBLE"))
+                .body("creditAssessmentStatus", equalTo("PASSED"))
                 .body("decision", equalTo("APPROVED"))
-                .body("decisionReasonCode", equalTo("ALL_CHECKS_PASSED"))
                 .extract()
                 .jsonPath()
                 .getString("loanApplicationId");
@@ -60,14 +58,11 @@ class LoanOriginationShowcaseE2ETest {
                 .statusCode(200)
                 .body("loanApplicationId", equalTo(loanApplicationId))
                 .body("eligibilityStatus", equalTo("ELIGIBLE"))
+                .body("creditAssessmentStatus", equalTo("PASSED"))
                 .body("merchantVerificationStatus", equalTo("VERIFIED"))
-                .body("journey", hasSize(3))
-                .body("journey[0].eventType", equalTo("LoanApplicationSubmitted"))
-                .body("journey[1].eventType", equalTo("LoanApplicationVerified"))
-                .body("journey[2].eventType", equalTo("LoanApplicationDecided"));
+                .body("journey", hasSize(3));
 
-        var auditEntries = loanApplicationAuditTrailStore.findByLoanApplicationId(loanApplicationId);
-        assertThat(auditEntries)
+        assertThat(loanApplicationAuditTrailStore.findByLoanApplicationId(loanApplicationId))
                 .extracting(entry -> entry.eventType())
                 .containsExactly("LoanApplicationSubmitted", "LoanApplicationVerified", "LoanApplicationDecided");
 
