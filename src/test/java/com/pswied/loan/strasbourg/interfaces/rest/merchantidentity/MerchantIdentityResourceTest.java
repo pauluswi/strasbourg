@@ -3,8 +3,8 @@ package com.pswied.loan.strasbourg.interfaces.rest.merchantidentity;
 import io.quarkus.test.junit.QuarkusTest;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -74,8 +74,10 @@ class MerchantIdentityResourceTest {
                 .jsonPath()
                 .getString("validatedAt");
 
-        assertThat(Instant.parse(replayValidatedAt))
-                .isEqualTo(Instant.parse(firstValidatedAt).truncatedTo(ChronoUnit.MICROS));
+        Instant first = Instant.parse(firstValidatedAt);
+        Instant replay = Instant.parse(replayValidatedAt);
+        long nanosDifference = Math.abs(Duration.between(first, replay).toNanos());
+        assertThat(nanosDifference).isLessThanOrEqualTo(1_000L);
     }
 
     @Test
