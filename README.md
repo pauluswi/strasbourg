@@ -526,20 +526,20 @@ docs/deployment/aws-eks.md
 
 * [x] Initial decision engine (`APPROVED` / `REJECTED` / `MANUAL_REVIEW`)
 * [x] Explainable decisions (decision reason code + reasons in response)
-* [ ] Manual review workflow
+* [~] Manual review workflow — Deferred / Out of current showcase scope
 
 ## Phase 5 — Event-Driven Architecture
 
-* [ ] Apache Kafka real broker integration
+* [~] Apache Kafka real broker integration — Deferred / Out of current showcase scope
 * [x] Domain events (loan lifecycle + merchant validation)
 * [x] Transactional Outbox (persisted, scheduler + retries/dead-letter)
-* [ ] Idempotent consumers
+* [~] Idempotent consumers — Deferred / Out of current showcase scope
 
 ## Phase 6 — Production Readiness
 
-* [ ] Authentication and authorization
-* [ ] Observability
-* [ ] Resilience patterns
+* [~] Authentication and authorization — Deferred / Out of current showcase scope
+* [~] Observability — Deferred / Out of current showcase scope
+* [~] Resilience patterns — Deferred / Out of current showcase scope
 * [x] Integration tests (Quarkus + persistence + API showcase)
 * [x] Architecture tests (ArchUnit)
 
