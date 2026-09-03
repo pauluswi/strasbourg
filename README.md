@@ -476,10 +476,18 @@ Strasbourg also documents architecture using:
 * **C4 Model**
 * **Architecture Decision Records (ADRs)**
 
-The ADRs live under:
+Core architecture docs:
 
 ```text
+docs/architecture/c4-system-context.md
+docs/architecture/c4-container-architecture.md
 docs/architecture/adr/
+```
+
+Deployment docs:
+
+```text
+docs/deployment/aws-eks.md
 ```
 
 ---
@@ -490,8 +498,8 @@ docs/architecture/adr/
 
 * [x] Define project scope
 * [x] Create architecture documentation
-* [ ] Define C4 System Context
-* [ ] Define C4 Container Architecture
+* [x] Define C4 System Context
+* [x] Define C4 Container Architecture
 * [x] Create Architecture Decision Records
 
 ## Phase 2 — Core Lending Domain
@@ -535,8 +543,8 @@ docs/architecture/adr/
 * [x] Docker (baseline Dockerfile)
 * [x] Kubernetes (baseline manifests)
 * [x] Helm (baseline chart)
-* [x] AWS deployment (EKS deployment guide + workflow)
-* [x] CI/CD pipeline (GitHub Actions CI + CD workflows)
+* [x] AWS deployment template (EKS deployment guide + guarded workflow)
+* [x] CI/CD pipeline (CI active, CD manual-only by default)
 
 ---
 
