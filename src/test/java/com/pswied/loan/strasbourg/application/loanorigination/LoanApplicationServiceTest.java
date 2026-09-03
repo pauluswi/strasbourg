@@ -11,6 +11,8 @@ import com.pswied.loan.strasbourg.domain.loanorigination.CreditAssessmentResult;
 import com.pswied.loan.strasbourg.domain.loanorigination.CreditAssessmentStatus;
 import com.pswied.loan.strasbourg.domain.loanorigination.EligibilityAssessmentResult;
 import com.pswied.loan.strasbourg.domain.loanorigination.EligibilityAssessmentStatus;
+import com.pswied.loan.strasbourg.domain.loanorigination.FraudAssessmentResult;
+import com.pswied.loan.strasbourg.domain.loanorigination.FraudAssessmentStatus;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplication;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplicationJourneyResult;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplicationLifecycleStage;
@@ -45,6 +47,7 @@ class LoanApplicationServiceTest {
         LoanApplicationService service = new LoanApplicationService(
                 eligibleAssessmentPort(),
                 passedCreditAssessmentPort(),
+                passedFraudAssessmentPort(),
                 passedApplicantVerificationPort(),
                 merchantService(verificationPortWithStatus(MerchantIdentityStatus.VERIFIED), outboxEventStore),
                 loanApplicationStore,
@@ -59,6 +62,8 @@ class LoanApplicationServiceTest {
         assertThat(result.eligibilityStatus()).isEqualTo(EligibilityAssessmentStatus.ELIGIBLE);
         assertThat(result.creditAssessmentStatus()).isEqualTo(CreditAssessmentStatus.PASSED);
         assertThat(result.creditAssessmentReason()).isEqualTo("Application passed mock credit assessment");
+        assertThat(result.fraudAssessmentStatus()).isEqualTo(FraudAssessmentStatus.PASSED);
+        assertThat(result.fraudAssessmentReason()).isEqualTo("Application passed mock fraud assessment");
         assertThat(result.applicantVerificationStatus()).isEqualTo(ApplicantVerificationStatus.PASSED);
         assertThat(result.merchantVerificationStatus()).isEqualTo(MerchantIdentityStatus.VERIFIED);
 
@@ -66,6 +71,7 @@ class LoanApplicationServiceTest {
         assertThat(persisted.lifecycleStage()).isEqualTo(LoanApplicationLifecycleStage.DECIDED);
         assertThat(persisted.eligibilityStatus()).isEqualTo(EligibilityAssessmentStatus.ELIGIBLE);
         assertThat(persisted.creditAssessmentStatus()).isEqualTo(CreditAssessmentStatus.PASSED);
+        assertThat(persisted.fraudAssessmentStatus()).isEqualTo(FraudAssessmentStatus.PASSED);
         assertThat(auditTrailStore.findByLoanApplicationId(result.loanApplicationId()))
                 .extracting(LoanApplicationAuditTrailEntry::eventType)
                 .containsExactly("LoanApplicationSubmitted", "LoanApplicationVerified", "LoanApplicationDecided");
@@ -80,6 +86,7 @@ class LoanApplicationServiceTest {
         LoanApplicationService service = new LoanApplicationService(
                 (amount, tenorMonths) -> new EligibilityAssessmentResult(EligibilityAssessmentStatus.INELIGIBLE, "Below minimum policy threshold"),
                 passedCreditAssessmentPort(),
+                passedFraudAssessmentPort(),
                 passedApplicantVerificationPort(),
                 merchantService(verificationPortWithStatus(MerchantIdentityStatus.VERIFIED), outboxEventStore),
                 new InMemoryLoanApplicationStore(),
@@ -99,6 +106,7 @@ class LoanApplicationServiceTest {
         LoanApplicationService service = new LoanApplicationService(
                 (amount, tenorMonths) -> new EligibilityAssessmentResult(EligibilityAssessmentStatus.MANUAL_REVIEW, "Threshold exceeded"),
                 passedCreditAssessmentPort(),
+                passedFraudAssessmentPort(),
                 passedApplicantVerificationPort(),
                 merchantService(verificationPortWithStatus(MerchantIdentityStatus.VERIFIED), outboxEventStore),
                 new InMemoryLoanApplicationStore(),
@@ -118,6 +126,7 @@ class LoanApplicationServiceTest {
         LoanApplicationService service = new LoanApplicationService(
                 eligibleAssessmentPort(),
                 (applicantName, amount, tenorMonths) -> new CreditAssessmentResult(CreditAssessmentStatus.REJECTED, "Applicant failed mock credit policy"),
+                passedFraudAssessmentPort(),
                 passedApplicantVerificationPort(),
                 merchantService(verificationPortWithStatus(MerchantIdentityStatus.VERIFIED), outboxEventStore),
                 new InMemoryLoanApplicationStore(),
@@ -138,6 +147,7 @@ class LoanApplicationServiceTest {
         LoanApplicationService service = new LoanApplicationService(
                 eligibleAssessmentPort(),
                 (applicantName, amount, tenorMonths) -> new CreditAssessmentResult(CreditAssessmentStatus.MANUAL_REVIEW, "Application requires manual credit analyst review"),
+                passedFraudAssessmentPort(),
                 passedApplicantVerificationPort(),
                 merchantService(verificationPortWithStatus(MerchantIdentityStatus.VERIFIED), outboxEventStore),
                 new InMemoryLoanApplicationStore(),
@@ -158,6 +168,7 @@ class LoanApplicationServiceTest {
         LoanApplicationService service = new LoanApplicationService(
                 new MockEligibilityAssessmentAdapter(),
                 new MockCreditAssessmentAdapter(),
+                passedFraudAssessmentPort(),
                 passedApplicantVerificationPort(),
                 merchantService(verificationPortWithStatus(MerchantIdentityStatus.VERIFIED), outboxEventStore),
                 new InMemoryLoanApplicationStore(),
@@ -181,11 +192,54 @@ class LoanApplicationServiceTest {
     }
 
     @Test
+    void rejectsWhenFraudFails() {
+        InMemoryOutboxEventStore outboxEventStore = new InMemoryOutboxEventStore();
+        LoanApplicationService service = new LoanApplicationService(
+                eligibleAssessmentPort(),
+                passedCreditAssessmentPort(),
+                (applicantName, merchantId, amount, tenorMonths) -> new FraudAssessmentResult(FraudAssessmentStatus.REJECTED, "Application failed mock fraud policy"),
+                passedApplicantVerificationPort(),
+                merchantService(verificationPortWithStatus(MerchantIdentityStatus.VERIFIED), outboxEventStore),
+                new InMemoryLoanApplicationStore(),
+                new InMemoryLoanApplicationAuditTrailStore(),
+                outboxEventStore
+        );
+
+        var result = service.submit(sampleRequest());
+
+        assertThat(result.decision()).isEqualTo(LoanOriginationDecision.REJECTED);
+        assertThat(result.decisionReasonCode()).isEqualTo(LoanOriginationDecisionReasonCode.FRAUD_REJECTED);
+        assertThat(result.fraudAssessmentStatus()).isEqualTo(FraudAssessmentStatus.REJECTED);
+    }
+
+    @Test
+    void routesToManualReviewWhenFraudNeedsReview() {
+        InMemoryOutboxEventStore outboxEventStore = new InMemoryOutboxEventStore();
+        LoanApplicationService service = new LoanApplicationService(
+                eligibleAssessmentPort(),
+                passedCreditAssessmentPort(),
+                (applicantName, merchantId, amount, tenorMonths) -> new FraudAssessmentResult(FraudAssessmentStatus.MANUAL_REVIEW, "Application requires manual fraud analyst review"),
+                passedApplicantVerificationPort(),
+                merchantService(verificationPortWithStatus(MerchantIdentityStatus.VERIFIED), outboxEventStore),
+                new InMemoryLoanApplicationStore(),
+                new InMemoryLoanApplicationAuditTrailStore(),
+                outboxEventStore
+        );
+
+        var result = service.submit(sampleRequest());
+
+        assertThat(result.decision()).isEqualTo(LoanOriginationDecision.MANUAL_REVIEW);
+        assertThat(result.decisionReasonCode()).isEqualTo(LoanOriginationDecisionReasonCode.FRAUD_MANUAL_REVIEW_REQUIRED);
+        assertThat(result.fraudAssessmentStatus()).isEqualTo(FraudAssessmentStatus.MANUAL_REVIEW);
+    }
+
+    @Test
     void rejectsWhenApplicantCheckFails() {
         InMemoryOutboxEventStore outboxEventStore = new InMemoryOutboxEventStore();
         LoanApplicationService service = new LoanApplicationService(
                 eligibleAssessmentPort(),
                 passedCreditAssessmentPort(),
+                passedFraudAssessmentPort(),
                 (applicantName, amount, tenorMonths) -> new ApplicantVerificationResult(ApplicantVerificationStatus.REJECTED, "Applicant was flagged"),
                 merchantService(verificationPortWithStatus(MerchantIdentityStatus.VERIFIED), outboxEventStore),
                 new InMemoryLoanApplicationStore(),
@@ -205,6 +259,7 @@ class LoanApplicationServiceTest {
         LoanApplicationService service = new LoanApplicationService(
                 eligibleAssessmentPort(),
                 passedCreditAssessmentPort(),
+                passedFraudAssessmentPort(),
                 passedApplicantVerificationPort(),
                 merchantService(verificationPortWithStatus(MerchantIdentityStatus.MANUAL_REVIEW), outboxEventStore),
                 new InMemoryLoanApplicationStore(),
@@ -226,6 +281,7 @@ class LoanApplicationServiceTest {
         LoanApplicationService service = new LoanApplicationService(
                 eligibleAssessmentPort(),
                 passedCreditAssessmentPort(),
+                passedFraudAssessmentPort(),
                 passedApplicantVerificationPort(),
                 merchantService(verificationPortWithStatus(MerchantIdentityStatus.VERIFIED), outboxEventStore),
                 loanApplicationStore,
@@ -239,6 +295,7 @@ class LoanApplicationServiceTest {
         assertThat(journey.loanApplicationId()).isEqualTo(submitted.loanApplicationId());
         assertThat(journey.eligibilityStatus()).isEqualTo(EligibilityAssessmentStatus.ELIGIBLE);
         assertThat(journey.creditAssessmentStatus()).isEqualTo(CreditAssessmentStatus.PASSED);
+        assertThat(journey.fraudAssessmentStatus()).isEqualTo(FraudAssessmentStatus.PASSED);
         assertThat(journey.merchantVerificationStatus()).isEqualTo(MerchantIdentityStatus.VERIFIED);
     }
 
@@ -253,6 +310,13 @@ class LoanApplicationServiceTest {
         return (applicantName, amount, tenorMonths) -> new CreditAssessmentResult(
                 CreditAssessmentStatus.PASSED,
                 "Application passed mock credit assessment"
+        );
+    }
+
+    private FraudAssessmentPort passedFraudAssessmentPort() {
+        return (applicantName, merchantId, amount, tenorMonths) -> new FraudAssessmentResult(
+                FraudAssessmentStatus.PASSED,
+                "Application passed mock fraud assessment"
         );
     }
 

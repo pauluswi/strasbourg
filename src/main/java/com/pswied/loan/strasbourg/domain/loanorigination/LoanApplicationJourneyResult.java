@@ -20,6 +20,8 @@ public record LoanApplicationJourneyResult(
         String eligibilityReason,
         CreditAssessmentStatus creditAssessmentStatus,
         String creditAssessmentReason,
+        FraudAssessmentStatus fraudAssessmentStatus,
+        String fraudAssessmentReason,
         ApplicantVerificationStatus applicantVerificationStatus,
         String applicantVerificationReason,
         MerchantIdentityStatus merchantVerificationStatus,

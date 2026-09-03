@@ -3,6 +3,7 @@ package com.pswied.loan.strasbourg.infrastructure.loanorigination;
 import com.pswied.loan.strasbourg.domain.loanorigination.ApplicantVerificationStatus;
 import com.pswied.loan.strasbourg.domain.loanorigination.CreditAssessmentStatus;
 import com.pswied.loan.strasbourg.domain.loanorigination.EligibilityAssessmentStatus;
+import com.pswied.loan.strasbourg.domain.loanorigination.FraudAssessmentStatus;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplication;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplicationLifecycleStage;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplicationStatus;
@@ -71,6 +72,13 @@ public class LoanApplicationEntity extends PanacheEntityBase {
     public String creditAssessmentReason;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "fraud_assessment_status", nullable = false, length = 32)
+    public FraudAssessmentStatus fraudAssessmentStatus;
+
+    @Column(name = "fraud_assessment_reason", columnDefinition = "TEXT")
+    public String fraudAssessmentReason;
+
+    @Enumerated(EnumType.STRING)
     @Column(name = "applicant_verification_status", nullable = false, length = 32)
     public ApplicantVerificationStatus applicantVerificationStatus;
 
@@ -114,6 +122,8 @@ public class LoanApplicationEntity extends PanacheEntityBase {
         entity.eligibilityReason = loanApplication.eligibilityReason();
         entity.creditAssessmentStatus = loanApplication.creditAssessmentStatus();
         entity.creditAssessmentReason = loanApplication.creditAssessmentReason();
+        entity.fraudAssessmentStatus = loanApplication.fraudAssessmentStatus();
+        entity.fraudAssessmentReason = loanApplication.fraudAssessmentReason();
         entity.applicantVerificationStatus = loanApplication.applicantVerificationStatus();
         entity.applicantVerificationReason = loanApplication.applicantVerificationReason();
         entity.merchantVerificationStatus = loanApplication.merchantVerificationStatus();
@@ -141,6 +151,8 @@ public class LoanApplicationEntity extends PanacheEntityBase {
                 eligibilityReason,
                 creditAssessmentStatus,
                 creditAssessmentReason,
+                fraudAssessmentStatus,
+                fraudAssessmentReason,
                 applicantVerificationStatus,
                 applicantVerificationReason,
                 merchantVerificationStatus,

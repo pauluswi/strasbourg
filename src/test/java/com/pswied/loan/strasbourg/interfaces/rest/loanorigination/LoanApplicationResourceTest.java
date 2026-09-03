@@ -51,6 +51,8 @@ class LoanApplicationResourceTest {
                 .body("eligibilityStatus", equalTo("ELIGIBLE"))
                 .body("creditAssessmentStatus", equalTo("PASSED"))
                 .body("creditAssessmentReason", equalTo("Application passed mock credit assessment"))
+                .body("fraudAssessmentStatus", equalTo("PASSED"))
+                .body("fraudAssessmentReason", equalTo("Application passed mock fraud assessment"))
                 .body("applicantVerificationStatus", equalTo("PASSED"))
                 .body("merchantVerificationStatus", equalTo("VERIFIED"))
                 .extract()
@@ -61,6 +63,7 @@ class LoanApplicationResourceTest {
         assertThat(persisted).isPresent();
         assertThat(persisted.orElseThrow().lifecycleStage()).isEqualTo(LoanApplicationLifecycleStage.DECIDED);
         assertThat(persisted.orElseThrow().creditAssessmentStatus().name()).isEqualTo("PASSED");
+        assertThat(persisted.orElseThrow().fraudAssessmentStatus().name()).isEqualTo("PASSED");
 
         assertThat(loanApplicationAuditTrailStore.findByLoanApplicationId(loanApplicationId)).hasSize(3);
         assertThat(outboxEventStore.findPendingEvents().stream()
@@ -100,6 +103,7 @@ class LoanApplicationResourceTest {
                 .body("loanApplicationId", equalTo(loanApplicationId))
                 .body("eligibilityStatus", equalTo("ELIGIBLE"))
                 .body("creditAssessmentStatus", equalTo("PASSED"))
+                .body("fraudAssessmentStatus", equalTo("PASSED"))
                 .body("merchantVerificationStatus", equalTo("VERIFIED"))
                 .body("journey", hasSize(3));
     }
@@ -133,6 +137,30 @@ class LoanApplicationResourceTest {
                 .statusCode(200)
                 .body("decision", equalTo("MANUAL_REVIEW"))
                 .body("decisionReasonCode", equalTo("CREDIT_MANUAL_REVIEW_REQUIRED"))
-                .body("creditAssessmentStatus", equalTo("MANUAL_REVIEW"));
+                .body("creditAssessmentStatus", equalTo("MANUAL_REVIEW"))
+                .body("fraudAssessmentStatus", equalTo("PASSED"));
+    }
+
+    @Test
+    void rejectsWhenFraudPolicyFails() {
+        given()
+                .contentType("application/json")
+                .body("""
+                        {
+                          "applicantName": "Eve Owner",
+                          "merchantId": "m-watchlist-5004",
+                          "merchantLegalName": "Delta Merchant",
+                          "merchantTaxNumber": "TAX-5004",
+                          "amount": 25000.00,
+                          "tenorMonths": 24
+                        }
+                        """)
+                .when()
+                .post("/api/loan-applications")
+                .then()
+                .statusCode(200)
+                .body("decision", equalTo("REJECTED"))
+                .body("decisionReasonCode", equalTo("FRAUD_REJECTED"))
+                .body("fraudAssessmentStatus", equalTo("REJECTED"));
     }
 }

@@ -4,6 +4,7 @@ import com.pswied.loan.strasbourg.application.loanorigination.LoanApplicationSto
 import com.pswied.loan.strasbourg.domain.loanorigination.ApplicantVerificationStatus;
 import com.pswied.loan.strasbourg.domain.loanorigination.CreditAssessmentStatus;
 import com.pswied.loan.strasbourg.domain.loanorigination.EligibilityAssessmentStatus;
+import com.pswied.loan.strasbourg.domain.loanorigination.FraudAssessmentStatus;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplication;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplicationLifecycleStage;
 import com.pswied.loan.strasbourg.domain.loanorigination.LoanApplicationStatus;
@@ -41,6 +42,8 @@ class PostgreSqlLoanApplicationStoreTest {
                 "Application passed initial eligibility policy",
                 CreditAssessmentStatus.PASSED,
                 "Application passed mock credit assessment",
+                FraudAssessmentStatus.PASSED,
+                "Application passed mock fraud assessment",
                 ApplicantVerificationStatus.PASSED,
                 "Applicant passed mock verification",
                 MerchantIdentityStatus.VERIFIED,
@@ -59,5 +62,6 @@ class PostgreSqlLoanApplicationStoreTest {
         assertThat(persisted.orElseThrow().decision()).isEqualTo(LoanOriginationDecision.APPROVED);
         assertThat(persisted.orElseThrow().eligibilityStatus()).isEqualTo(EligibilityAssessmentStatus.ELIGIBLE);
         assertThat(persisted.orElseThrow().creditAssessmentStatus()).isEqualTo(CreditAssessmentStatus.PASSED);
+        assertThat(persisted.orElseThrow().fraudAssessmentStatus()).isEqualTo(FraudAssessmentStatus.PASSED);
     }
 }

@@ -19,6 +19,8 @@
 Current implemented flow:
 
 * Merchant owner submits a loan application
+* Automated assessments are executed (credit, fraud)
+* Eligibility policy gate is executed before decisioning
 * Applicant (owner) verification is run via mock adapter
 * Merchant identity is verified through SAP S/4 ACL (mocked adapter)
 * Origination decision is returned (`APPROVED`, `REJECTED`, `MANUAL_REVIEW`)
@@ -104,9 +106,12 @@ Including:
                  POST /api/loan-applications
                                │
                                ▼
-                 Mock Applicant Verification
+                 Eligibility + Credit + Fraud Checks
                                │
                                ▼
+                 Mock Applicant Verification
+                              │
+                              ▼
                  Merchant Identity Validation
                                │
                                ▼
@@ -147,7 +152,7 @@ rather than immediately introducing multiple microservices.
 │  ┌───────────────────────────────────────────────────┐   │
 │  │ Assessment                                        │   │
 │  │                                                   │   │
-│  │  Credit │ Fraud │ Affordability │ Identity        │   │
+│  │  Credit │ Fraud │ Identity                      │   │
 │  └───────────────────────────────────────────────────┘   │
 │                                                          │
 │  ┌─────────────────┐    ┌────────────────────────────┐   │
@@ -243,7 +248,7 @@ The ACL is responsible for:
 * `POST /api/merchant-identities/validate`  
   Merchant verification with `Idempotency-Key`, audit persistence, and outbox event.
 * `POST /api/loan-applications`  
-  Submit loan application, run applicant + merchant verification, return decision, persist lifecycle/audit/outbox.
+  Submit loan application, run eligibility + credit + fraud + applicant + merchant checks, return decision, persist lifecycle/audit/outbox.
 * `GET /api/loan-applications/{loanApplicationId}`  
   Read full journey including SAP verification result and lifecycle timeline.
 * `POST /api/outbox/publish`  
@@ -506,16 +511,16 @@ docs/deployment/aws-eks.md
 
 * [x] Loan Application (submit + read journey)
 * [x] Application validation (merchant owner + merchant data)
-* [ ] Eligibility assessment
+* [x] Eligibility assessment
 * [x] Domain model
 * [x] State transitions (`SUBMITTED` -> `VERIFIED` -> `DECIDED`)
 
 ## Phase 3 — Automated Assessments
 
-* [ ] Credit assessment
-* [ ] Fraud assessment
-* [ ] Affordability assessment
-* [ ] External provider simulators
+* [x] Credit assessment
+* [x] Fraud assessment
+* [x] Scope limited to credit + fraud (affordability intentionally skipped)
+* [x] External provider simulators
 
 ## Phase 4 — Decisioning
 

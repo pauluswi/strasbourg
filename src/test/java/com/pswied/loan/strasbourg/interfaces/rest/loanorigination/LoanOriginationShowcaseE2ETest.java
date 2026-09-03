@@ -46,6 +46,7 @@ class LoanOriginationShowcaseE2ETest {
                 .body("merchantVerificationStatus", equalTo("VERIFIED"))
                 .body("eligibilityStatus", equalTo("ELIGIBLE"))
                 .body("creditAssessmentStatus", equalTo("PASSED"))
+                .body("fraudAssessmentStatus", equalTo("PASSED"))
                 .body("decision", equalTo("APPROVED"))
                 .extract()
                 .jsonPath()
@@ -59,6 +60,7 @@ class LoanOriginationShowcaseE2ETest {
                 .body("loanApplicationId", equalTo(loanApplicationId))
                 .body("eligibilityStatus", equalTo("ELIGIBLE"))
                 .body("creditAssessmentStatus", equalTo("PASSED"))
+                .body("fraudAssessmentStatus", equalTo("PASSED"))
                 .body("merchantVerificationStatus", equalTo("VERIFIED"))
                 .body("journey", hasSize(3));
 
