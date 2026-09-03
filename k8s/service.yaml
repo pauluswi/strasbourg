@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: strasbourg
+  namespace: strasbourg
+  labels:
+    app.kubernetes.io/name: strasbourg
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: strasbourg
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+

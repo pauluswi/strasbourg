@@ -1,0 +1,20 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: strasbourg
+  namespace: strasbourg
+  annotations:
+    kubernetes.io/ingress.class: nginx
+spec:
+  rules:
+    - host: strasbourg.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: strasbourg
+                port:
+                  number: 80
+

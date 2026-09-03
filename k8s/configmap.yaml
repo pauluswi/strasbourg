@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: strasbourg-config
+  namespace: strasbourg
+data:
+  QUARKUS_PROFILE: "prod"
+  STRASBOURG_OUTBOX_POLL_INTERVAL: "5s"
+  STRASBOURG_OUTBOX_MAX_RETRIES: "5"
+  STRASBOURG_OUTBOX_RETRY_BACKOFF_SECONDS: "30"
+  DB_JDBC_URL: "jdbc:postgresql://postgresql:5432/strasbourg"
+

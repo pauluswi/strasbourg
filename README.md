@@ -532,11 +532,11 @@ docs/architecture/adr/
 
 ## Phase 7 — Cloud Deployment
 
-* [ ] Docker
-* [ ] Kubernetes
-* [ ] Helm
-* [ ] AWS deployment
-* [ ] CI/CD pipeline
+* [x] Docker (baseline Dockerfile)
+* [x] Kubernetes (baseline manifests)
+* [x] Helm (baseline chart)
+* [x] AWS deployment (EKS deployment guide + workflow)
+* [x] CI/CD pipeline (GitHub Actions CI + CD workflows)
 
 ---
 
