@@ -71,7 +71,7 @@ Set image repository/tag and DB values via `--set` or a values override file.
 ## 5. CI/CD behavior
 
 - `ci.yml`: runs Maven tests on pull requests and pushes to `main`.
-- `cd-aws-eks.yml`: on push to `main` (or manual dispatch):
+- `cd-aws-eks.yml`: manual dispatch only (deployment template). It runs only when `enable_deploy=true`:
   - runs tests,
   - builds Docker image,
   - pushes to ECR,
@@ -82,4 +82,3 @@ Set image repository/tag and DB values via `--set` or a values override file.
 
 - Local/default app profile uses H2; container/Kubernetes deployment is configured for `prod` profile and PostgreSQL env vars.
 - Kafka is still mocked in the current showcase runtime.
-

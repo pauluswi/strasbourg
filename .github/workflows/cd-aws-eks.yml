@@ -1,10 +1,14 @@
 name: CD AWS EKS
 
 on:
+  # Manual-only deployment template.
+  # Keep disabled for automatic runs until AWS infra/secrets are ready.
   workflow_dispatch:
-  push:
-    branches:
-      - main
+    inputs:
+      enable_deploy:
+        description: "Set to true to run AWS EKS deployment"
+        required: true
+        default: "false"
 
 permissions:
   contents: read
@@ -19,6 +23,7 @@ env:
 
 jobs:
   deploy:
+    if: ${{ github.event.inputs.enable_deploy == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -80,4 +85,3 @@ jobs:
             --namespace "$EKS_NAMESPACE" \
             --set image.repository="$REGISTRY/$ECR_REPOSITORY" \
             --set image.tag="$IMAGE_TAG"
-
